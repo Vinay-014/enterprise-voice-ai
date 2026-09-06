@@ -64,9 +64,11 @@ interface CallRecord {
   overall_score: number;
   interest_score: number;
   answers_summary?: string | null;
-  disposition: 'Interested' | 'Not Interested' | 'Call Back Later' | 'Unreachable' | 'Pending';
+  disposition: 'Interested' | 'Not Interested' | 'Call Back Later' | 'Unreachable' | 'Failed' | 'Aborted' | 'Pending';
   created_at: string;
   updated_at?: string | null;
+  _notice?: string | null;
+  _source?: string | null;
 }
 
 interface CandidateProfile {
@@ -377,6 +379,10 @@ async function startServer() {
       callCounter += 1;
       let generatedCallId = `hunar_call_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
       let hunarStatus: CallRecord['status'] = 'Initiated';
+      let hunarDisposition: CallRecord['disposition'] = 'Pending';
+      let upstreamNotice: string | null = null;
+      let transcript = `Voice screening call dispatched to ${phone_number} for position "${position}". Hunar Voice agent active.`;
+      let answersSummary = 'Call initiated. Live audio stream processing.';
 
       // Call Hunar Voice API if configured using resilient client with exponential backoff
       if (HUNAR_API_KEY) {
@@ -400,6 +406,7 @@ async function startServer() {
               request_id: generatedCallId
             })
           });
+
           if (hunarRes && hunarRes.ok) {
             const data = (await hunarRes.json()) as any;
             if (data.id || data.call_id) generatedCallId = data.id || data.call_id;
@@ -408,11 +415,35 @@ async function startServer() {
               if (s === 'SCHEDULED' || s === 'INITIATED') hunarStatus = 'Initiated';
               else if (s === 'IN_PROGRESS' || s === 'RINGING') hunarStatus = 'Ringing';
               else if (s === 'COMPLETED') hunarStatus = 'Completed';
-              else if (s === 'FAILED') hunarStatus = 'Failed';
+              else if (s === 'FAILED') {
+                hunarStatus = 'Failed';
+                hunarDisposition = 'Failed';
+              }
             }
+          } else if (hunarRes) {
+            // Upstream rejection from Hunar Voice API (e.g. 401/402/422 unwhitelisted number or trial restriction)
+            let errDetail = `HTTP ${hunarRes.status}`;
+            try {
+              const errJson = (await hunarRes.json()) as any;
+              errDetail = errJson.detail || errJson.message || errJson.error || JSON.stringify(errJson);
+            } catch {
+              try { errDetail = await hunarRes.text(); } catch {}
+            }
+            console.warn(`Hunar Voice API rejected outbound call dispatch [HTTP ${hunarRes.status}]: ${errDetail}`);
+
+            hunarStatus = 'Failed';
+            hunarDisposition = 'Failed';
+            upstreamNotice = `Hunar Voice API rejected dispatch (HTTP ${hunarRes.status}: ${errDetail}). Account trial authorization restriction or unwhitelisted destination number.`;
+            answersSummary = `Upstream dispatch rejected by Hunar API (HTTP ${hunarRes.status}: ${errDetail}).`;
+            transcript = `PSTN Dispatch Failed: Hunar Voice API rejected call to ${phone_number}. Reason: ${errDetail} (HTTP ${hunarRes.status}). Verify destination number whitelisting or trial PSTN permissions on Hunar.`;
           }
-        } catch (apiErr) {
-          console.warn('Hunar API outbound call dispatch fell back to resilient queue:', apiErr);
+        } catch (apiErr: any) {
+          console.warn('Hunar API outbound call dispatch exception:', apiErr?.message);
+          hunarStatus = 'Failed';
+          hunarDisposition = 'Failed';
+          upstreamNotice = `Network failure dispatching to Hunar Voice API: ${apiErr?.message}`;
+          answersSummary = 'Network connection to telephony gateway failed.';
+          transcript = `Network failure dispatching to Hunar Voice Gateway: ${apiErr?.message}`;
         }
       }
 
@@ -425,17 +456,18 @@ async function startServer() {
         custom_prompt: custom_prompt || null,
         status: hunarStatus,
         duration_seconds: 0,
-        transcript: `Voice screening call dispatched to ${phone_number} for position "${position}". Hunar Voice agent active.`,
+        transcript,
         overall_score: 0.0,
         interest_score: 0.0,
-        answers_summary: 'Call initiated. Live audio stream processing.',
-        disposition: 'Pending',
-        created_at: new Date().toISOString()
+        answers_summary: answersSummary,
+        disposition: hunarDisposition,
+        created_at: new Date().toISOString(),
+        ...(upstreamNotice ? { _notice: upstreamNotice } : {})
       };
 
       callsDb.unshift(newRecord);
 
-      // Async status lifecycle transition: Initiated -> Ringing (after carrier signaling delay)
+      // Async status lifecycle transition: only auto-advance if call was successfully initiated (not rejected/failed)
       if (hunarStatus === 'Initiated') {
         setTimeout(() => {
           const rec = callsDb.find((c) => c.call_id === generatedCallId);
@@ -476,7 +508,7 @@ async function startServer() {
       return res.status(404).json({ detail: 'Call record not found' });
     }
     call.status = 'Failed';
-    call.disposition = 'Unreachable';
+    call.disposition = 'Failed';
     call.duration_seconds = 12;
     call.transcript = `Outbound route to ${call.phone_number} failed. Carrier response: SIP 486 Busy Here / Remote Terminal Unreachable.`;
     call.answers_summary = 'Call failed due to carrier timeout or line busy.';
@@ -532,11 +564,32 @@ async function startServer() {
         return res.json({ ...call, _source: 'hunar_api_live' });
       }
 
-      // Non-2xx from Hunar — return cached state with warning
-      return res.json({ ...call, _notice: `Hunar API returned non-OK status; showing cached state` });
+      // Non-2xx from Hunar — set status & disposition to 'Failed'
+      let detail = '';
+      if (hunarRes) {
+        try {
+          const errJson = await hunarRes.json();
+          detail = errJson.detail || errJson.message || JSON.stringify(errJson);
+        } catch {}
+      }
+      call.status = 'Failed';
+      call.disposition = 'Failed';
+      call.updated_at = new Date().toISOString();
+      call._notice = `Hunar API returned HTTP ${hunarRes?.status || 500}${detail ? ` (${detail})` : ''}; marked as Failed`;
+      if (!call.answers_summary || call.answers_summary.includes('processing') || call.answers_summary.includes('awaiting')) {
+        call.answers_summary = `Upstream telephony error (HTTP ${hunarRes?.status || 500}).`;
+      }
+      return res.json({
+        ...call,
+        _notice: call._notice
+      });
     } catch (err: any) {
-      console.warn('Hunar refresh poll error (returning cached state):', err?.message);
-      return res.json({ ...call, _notice: 'Hunar API unreachable; showing cached state' });
+      console.warn('Hunar refresh poll error:', err?.message);
+      call.status = 'Failed';
+      call.disposition = 'Failed';
+      call.updated_at = new Date().toISOString();
+      call._notice = 'Hunar API unreachable; marked as Failed';
+      return res.json({ ...call, _notice: call._notice });
     }
   };
 

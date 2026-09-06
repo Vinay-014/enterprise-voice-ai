@@ -1,6 +1,6 @@
-# Enterprise Voice AI Backend Service
+# Enterprise Voice AI
 
-FastAPI production backend supporting:
+Supporting:
 1. Outbound voice screening calls via Hunar Voice API
 2. Webhook outcome ingestion and call scoring
 3. Candidate extraction from Job Descriptions and bulk voice outreach dispatch

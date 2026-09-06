@@ -12,9 +12,11 @@ export interface CallRecord {
   overall_score: number;
   interest_score: number;
   answers_summary?: string | null;
-  disposition: 'Interested' | 'Not Interested' | 'Call Back Later' | 'Unreachable' | 'Pending';
+  disposition: 'Interested' | 'Not Interested' | 'Call Back Later' | 'Unreachable' | 'Failed' | 'Aborted' | 'Pending';
   created_at: string;
   updated_at?: string | null;
+  _notice?: string | null;
+  _source?: string | null;
 }
 
 export interface TriggerCallPayload {

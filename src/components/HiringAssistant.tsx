@@ -475,6 +475,16 @@ export const HiringAssistant: React.FC = () => {
                             {call.answers_summary || 'Analysis complete'}
                           </div>
                         </div>
+                      ) : call.status === 'Failed' ? (
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-rose-400">
+                            <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                            <span>Evaluation Aborted</span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate max-w-xs" title={call.answers_summary || call.transcript || 'Carrier rejected / Line busy'}>
+                            {call.answers_summary || 'Carrier rejected / Unreachable'}
+                          </div>
+                        </div>
                       ) : (
                         <span className="text-xs text-slate-500 italic">In progress...</span>
                       )}
@@ -487,10 +497,12 @@ export const HiringAssistant: React.FC = () => {
                             ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                             : call.disposition === 'Not Interested'
                             ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                            : call.disposition === 'Failed' || call.disposition === 'Aborted' || call.disposition === 'Unreachable' || call.status === 'Failed'
+                            ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                             : 'bg-white/5 text-slate-400 border-white/10'
                         }`}
                       >
-                        {call.disposition}
+                        {call.status === 'Failed' && call.disposition === 'Pending' ? 'Failed' : call.disposition}
                       </span>
                     </td>
 
@@ -587,6 +599,17 @@ export const HiringAssistant: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Notice indicator if upstream warning/notice */}
+              {selectedCall._notice && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl flex items-start gap-2.5 text-xs text-amber-300">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold text-amber-300">Telephony Gateway Notice: </span>
+                    <span className="text-slate-300">{selectedCall._notice}</span>
+                  </div>
+                </div>
+              )}
 
               {/* Summary */}
               {selectedCall.answers_summary && (
