@@ -1499,11 +1499,8 @@ async function startServer() {
     return res.status(201).json(newRecord);
   });
 
-  // Determine production execution mode (decoupled from Vite dev HMR watchers)
-  const isProduction =
-    process.env.NODE_ENV === 'production' ||
-    (typeof __filename !== 'undefined' && (__filename.endsWith('.cjs') || __filename.includes('dist'))) ||
-    Boolean(process.argv[1] && (process.argv[1].endsWith('.cjs') || process.argv[1].includes('dist')));
+  // Production mode: set by NODE_ENV=production (standard Render / cloud signal)
+  const isProduction = process.env.NODE_ENV === 'production';
 
   if (!isProduction) {
     const vite = await createViteServer({

@@ -5,6 +5,7 @@
 [![React](https://img.shields.io/badge/React-19.0-61DAFB.svg?logo=react)](https://react.dev/)
 [![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-v4.1-38B2AC.svg?logo=tailwind-css)](https://tailwindcss.com/)
 [![Express](https://img.shields.io/badge/Express-4.21-lightgrey.svg?logo=express)](https://expressjs.com/)
+[![Render](https://img.shields.io/badge/Deploy-Render-46E3B7.svg?logo=render)](https://render.com/)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)]()
 
 A carrier-grade, multimodal enterprise voice automation suite. The platform unifies **autonomous outbound technical screening**, **dynamic job description parsing & talent search**, and **smartphone-free workforce attendance verification** with acoustic voiceprint biometrics—backed by resilient circuit-breaker architecture and zero-exposure security protocols.
@@ -14,7 +15,7 @@ A carrier-grade, multimodal enterprise voice automation suite. The platform unif
 ## 📑 Table of Contents
 
 - [Executive Summary](#-executive-summary)
-- [System Architecture & Design](#-system-architecture--design)
+- [System Architecture & Design](#️-system-architecture--design)
 - [Core Platform Modules](#-core-platform-modules)
   - [Module 1: Autonomous AI Hiring Assistant](#module-1-autonomous-ai-hiring-assistant)
   - [Module 2: People Search & Autonomous Reachout](#module-2-people-search--autonomous-reachout)
@@ -23,7 +24,7 @@ A carrier-grade, multimodal enterprise voice automation suite. The platform unif
 - [API Reference Specifications](#-api-reference-specifications)
 - [Environment Configuration](#-environment-configuration)
 - [Installation & Getting Started](#-installation--getting-started)
-- [Production Deployment & Hardening](#-production-deployment--hardening)
+- [Production Deployment on Render](#-production-deployment-on-render)
 
 ---
 
@@ -127,11 +128,11 @@ stateDiagram-v2
 
 | Layer | Resiliency Mechanism | Technical Implementation |
 |---|---|---|
-| **Outbound Telephony** | Exponential Backoff with Timeout | `fetchWithRetry` with `AbortController`, 5-10s timeout, and exponential backoff retry. |
+| **Outbound Telephony** | Exponential Backoff with Timeout | `fetchWithRetry` with `AbortController`, 5–10s timeout, and exponential backoff retry. |
 | **Upstream Rejection** | Fast-Fail Circuit Breaker | Non-2xx responses from telephony providers immediately transition state to `Failed`, halting auto-advance timers. |
 | **Frontend Network** | Auto-Recovery Retry Client | `fetchWithAutoRecovery` retries transient 502/503/504 errors up to 5 times over 15 seconds. |
-| **Search Fallback** | Tiered Provider Degradation | `PDL API` $\rightarrow$ `Apollo.io API` $\rightarrow$ `Local Verified Talent Pool` with honest `api_status` labels. |
-| **Production Build** | Static Decoupled Serving | Single unified binary (`dist/server.cjs`) decoupled from dev HMR watchers and development WebSockets. |
+| **Search Fallback** | Tiered Provider Degradation | `PDL API` → `Apollo.io API` → `Local Verified Talent Pool` with honest `api_status` labels. |
+| **Production Serving** | Static Decoupled Serving | `express.static('dist')` + SPA catch-all route, activated by `NODE_ENV=production`. Zero Vite HMR or WebSocket listeners in production. |
 
 ---
 
@@ -311,7 +312,7 @@ Processes an inbound IVR attendance check-in session.
 
 ##  Environment Configuration
 
-Copy `.env.example` to create your local `.env`:
+Copy `.env.example` to `.env` and fill in your values:
 
 ```bash
 cp .env.example .env
@@ -319,12 +320,14 @@ cp .env.example .env
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `PORT` | Optional | `3000` | HTTP port for server binding |
-| `NODE_ENV` | Optional | `development` | Set to `production` to enforce static serving mode |
+| `PORT` | Optional | `3000` | HTTP port for server binding (auto-injected by Render) |
+| `NODE_ENV` | **Required (prod)** | `development` | Set to `production` to activate static serving mode |
 | `HUNAR_API_KEY` | Recommended | — | API Token from [Hunar Voice](https://app.voice.hunar.ai) |
 | `HUNAR_BASE_URL` | Optional | `https://api.voice.hunar.ai` | Hunar Voice Gateway endpoint |
-| `HUNAR_SCREENING_AGENT_ID` | Optional | `8bbc73ee-01f7-4d30-96fb-3d4af2f07121` | Agent ID for candidate technical screening |
-| `HUNAR_REACHOUT_AGENT_ID` | Optional | `0223d9b0-7c18-4277-a672-65a6064c2615` | Agent ID for batch talent reachout |
+| `HUNAR_SCREENING_AGENT_ID` | Optional | `0f870d5a-ba01-4a4a-bc97-611727aa1837` | Agent ID for candidate technical screening |
+| `HUNAR_REACHOUT_AGENT_ID` | Optional | `ffc1ebd5-6c44-4864-be80-cbf5e0ae8011` | Agent ID for batch talent reachout |
+| `HUNAR_IVR_AGENT_ID` | Optional | `845421cc-5b74-43bc-a9ae-2aaf78b4e403` | Agent ID for IVR attendance verification |
+| `APP_PUBLIC_URL` | **Required (prod)** | — | Your deployed URL (e.g. `https://your-app.onrender.com`) — used to register Hunar webhook callbacks |
 | `PDL_API_KEY` | Optional | — | [People Data Labs](https://www.peopledatalabs.com/) API Key |
 | `APOLLO_API_KEY` | Optional | — | [Apollo.io](https://apollo.io/) People Search API Key |
 | `DATABASE_URL` | Optional | `sqlite:///./app.db` | Database connection string |
@@ -337,44 +340,109 @@ cp .env.example .env
 - **Node.js**: `v20.x` or `v22.x` (LTS recommended)
 - **npm**: `v10.x` or later
 
-### 1. Install Dependencies
+### 1. Clone & Install Dependencies
 ```bash
+git clone <repository-url>
+cd enterprise-voice-ai-platform
 npm install
 ```
 
-### 2. Run in Development Mode
+### 2. Configure Environment
+```bash
+cp .env.example .env
+# Edit .env and fill in your HUNAR_API_KEY and agent IDs
+```
+
+### 3. Run in Development Mode
 Runs the TypeScript server with `tsx watch` for automatic live-reloading:
 ```bash
 npm run dev
 ```
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### 3. Run Static Type Checking
+### 4. Build the Frontend
+```bash
+npm run build
+# Outputs: dist/index.html + dist/assets/
+```
+
+### 5. Run Static Type Checking
 ```bash
 npm run lint
 ```
 
 ---
 
-##  Production Deployment & Hardening
+##  Production Deployment on Render
 
-### 1. Build the Production Bundle
-Builds the Vite frontend and bundles the Express backend into `dist/server.cjs`:
-```bash
-npm run build
+This platform is deployed as a **single unified Node.js/Express service** on [Render](https://render.com/), serving both the Vite frontend and all API routes from one process.
+
+### How It Works
+
+```
+Render Build Step:   npm install && npm run build
+                     └─ vite build → dist/ (static frontend assets)
+
+Render Start Step:   npm start
+                     └─ NODE_ENV=production tsx server.ts
+                        ├─ Detects NODE_ENV=production
+                        ├─ Serves dist/ via express.static()
+                        ├─ SPA catch-all: GET * → dist/index.html
+                        └─ All /api/v1/* routes active
 ```
 
-### 2. Execute Production Server
-Starts the high-performance CommonJS bundle directly via Node.js:
+### Deploy to Render
+
+1. **Create a new Web Service** on [render.com](https://render.com/) → connect your GitHub repo.
+2. **Set Build & Start commands:**
+   | Field | Value |
+   |---|---|
+   | Build Command | `npm install && npm run build` |
+   | Start Command | `npm start` |
+3. **Add Environment Variables** in the Render dashboard:
+   ```
+   NODE_ENV=production
+   HUNAR_API_KEY=<your-live-api-key>
+   HUNAR_BASE_URL=https://api.voice.hunar.ai
+   HUNAR_SCREENING_AGENT_ID=0f870d5a-ba01-4a4a-bc97-611727aa1837
+   HUNAR_REACHOUT_AGENT_ID=ffc1ebd5-6c44-4864-be80-cbf5e0ae8011
+   HUNAR_IVR_AGENT_ID=845421cc-5b74-43bc-a9ae-2aaf78b4e403
+   APP_PUBLIC_URL=https://<your-app>.onrender.com
+   ```
+4. **Deploy** — Render will run the build command, then start the server.
+5. **Post-deploy verification:**
+   ```
+   GET https://<your-app>.onrender.com/api/health   → { "status": "healthy" }
+   GET https://<your-app>.onrender.com/              → React SPA loads
+   GET https://<your-app>.onrender.com/hiring        → Client-side route works (no 404)
+   ```
+
+> **Webhook Registration:** Once deployed, update `APP_PUBLIC_URL` in Render's environment to your live Render URL. This ensures Hunar Voice API posts call status webhooks to `https://<your-app>.onrender.com/api/v1/webhooks/hunar`.
+
+### Local Production Simulation
+
+Test the production mode locally before deploying:
+
 ```bash
-npm run start
+# Build Vite frontend
+npm run build
+
+# Start in production mode (PowerShell)
+$env:NODE_ENV="production"; npx tsx server.ts
+
+# Verify production mode is active
+curl http://localhost:3000/api/health
+# → { "status": "healthy", "service": "enterprise-voice-ai-platform" }
 ```
 
 ### Security & Hardening Checklist
-- [x] **Zero-Exposure Secrets:** All API keys are accessed strictly server-side via `process.env`. No secret tokens are bundled into client-side code.
-- [x] **Git Tracking Safeguards:** `.env` and local environment files are ignored in `.gitignore`.
-- [x] **Strict Type Safety:** Validated against TypeScript 5.8 with `noImplicitAny` and strict null checks.
-- [x] **Clean Port Deconfliction:** Includes error interception for `EADDRINUSE` with guided release instructions.
+- [x] **Zero-Exposure Secrets:** All API keys accessed server-side via `process.env` only — never bundled into client code.
+- [x] **Git Tracking Safeguards:** `.env` excluded from version control via `.gitignore`.
+- [x] **HMAC-SHA256 Webhook Verification:** Canonical signature check with 300-second replay protection on all incoming Hunar webhooks.
+- [x] **Strict Type Safety:** Validated against TypeScript 5.8 with strict null checks and `noImplicitAny`.
+- [x] **ESM-Clean Production Detection:** `isProduction` uses `NODE_ENV === 'production'` exclusively — no fragile `__filename` checks.
+- [x] **Clean Port Deconfliction:** `EADDRINUSE` interception with guided release instructions.
+- [x] **Render-Compliant Port Binding:** `httpServer.listen(PORT, '0.0.0.0')` — accepts Render's dynamic `PORT` injection.
 
 ---
 
