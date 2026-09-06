@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '../lib/api';
 import { CallRecord } from '../types';
 import {
@@ -32,33 +32,61 @@ export const HiringAssistant: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isSimulatingWebhook, setIsSimulatingWebhook] = useState(false);
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
+  const isFetchingRef = useRef(false);
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchCalls = async () => {
-    setIsLoadingCalls(true);
+  const fetchCalls = useCallback(async (isBackground = false) => {
+    if (isFetchingRef.current) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+    isFetchingRef.current = true;
+    if (!isBackground) setIsLoadingCalls(true);
+
     try {
       const data = await api.getCalls(statusFilter === 'all' ? undefined : statusFilter);
       setCalls(data);
     } catch (err: any) {
-      console.error('Failed to fetch call records:', err);
+      // Gracefully handle transient network switches (e.g. Wi-Fi reconnection) without throwing
+      console.warn('Call telemetry sync deferred (network reconnecting):', err?.message);
     } finally {
-      setIsLoadingCalls(false);
+      if (!isBackground) setIsLoadingCalls(false);
+      isFetchingRef.current = false;
     }
-  };
-
-  useEffect(() => {
-    fetchCalls();
   }, [statusFilter]);
 
-  // Live real-time lifecycle tracking when calls are Initiated or Ringing
+  // Initial and filter-change fetch
   useEffect(() => {
-    const hasActiveCalls = calls.some((c) => c.status === 'Initiated' || c.status === 'Ringing');
-    if (!hasActiveCalls) return;
+    fetchCalls(false);
+  }, [fetchCalls]);
 
-    const interval = setInterval(() => {
-      fetchCalls();
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [calls, statusFilter]);
+  // Sequential, non-overlapping polling when active calls are in-flight
+  useEffect(() => {
+    const hasActiveCalls = calls.some(
+      (c) => c.status === 'Initiated' || c.status === 'Ringing' || c.status === 'In Progress'
+    );
+    if (!hasActiveCalls) {
+      if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
+      return;
+    }
+
+    let isMounted = true;
+
+    const scheduleNextPoll = () => {
+      if (!isMounted) return;
+      pollingTimeoutRef.current = setTimeout(async () => {
+        if (!isMounted) return;
+        await fetchCalls(true);
+        if (isMounted) scheduleNextPoll();
+      }, 4000);
+    };
+
+    scheduleNextPoll();
+
+    return () => {
+      isMounted = false;
+      if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
+    };
+  }, [calls, fetchCalls]);
 
   const handleTriggerCall = async (e: React.FormEvent) => {
     e.preventDefault();
