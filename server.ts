@@ -443,6 +443,17 @@ async function startServer() {
   const app = express();
   const httpServer = http.createServer(app);
 
+  // Enterprise Security Headers including Content-Security-Policy
+  app.use((_req, res, next) => {
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; font-src 'self' https: data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss: ws:;"
+    );
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    next();
+  });
+
   // Raw body preservation for cryptographic webhook signature verification
   app.use(
     express.json({

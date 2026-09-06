@@ -31,25 +31,22 @@ export default function App() {
 
   const [activeSuite, setActiveSuite] = useState<'hiring' | 'reachout' | 'attendance'>(getInitialTab());
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const targetPath = `/${activeSuite}`;
-      if (window.location.pathname !== targetPath) {
-        window.history.pushState(null, '', targetPath);
-      }
-      window.location.hash = activeSuite;
+  // User-gesture-driven navigation: update history only when user explicitly clicks a tab,
+  // preventing Chrome's skippable history intervention on initial page paint
+  const handleSelectSuite = (suite: 'hiring' | 'reachout' | 'attendance') => {
+    setActiveSuite(suite);
+    if (typeof window !== 'undefined' && window.location.pathname !== `/${suite}`) {
+      window.history.pushState(null, '', `/${suite}`);
     }
-  }, [activeSuite]);
+  };
 
   useEffect(() => {
     const handleUrlChange = () => {
       setActiveSuite(getInitialTab());
     };
     window.addEventListener('popstate', handleUrlChange);
-    window.addEventListener('hashchange', handleUrlChange);
     return () => {
       window.removeEventListener('popstate', handleUrlChange);
-      window.removeEventListener('hashchange', handleUrlChange);
     };
   }, []);
 
@@ -82,7 +79,7 @@ export default function App() {
             {/* Navigation Tabs */}
             <nav className="flex items-center gap-1.5 p-1 bg-white/5 rounded-xl border border-white/10">
               <button
-                onClick={() => setActiveSuite('hiring')}
+                onClick={() => handleSelectSuite('hiring')}
                 className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   activeSuite === 'hiring'
                     ? 'bg-amber-500 text-black shadow-md font-bold'
@@ -94,7 +91,7 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setActiveSuite('reachout')}
+                onClick={() => handleSelectSuite('reachout')}
                 className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   activeSuite === 'reachout'
                     ? 'bg-amber-500 text-black shadow-md font-bold'
@@ -106,7 +103,7 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setActiveSuite('attendance')}
+                onClick={() => handleSelectSuite('attendance')}
                 className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   activeSuite === 'attendance'
                     ? 'bg-amber-500 text-black shadow-md font-bold'

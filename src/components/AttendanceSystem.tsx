@@ -255,11 +255,14 @@ export const AttendanceSystem: React.FC = () => {
 
             <form onSubmit={handleRunSimulator} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label htmlFor="sim-employee-id" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                   Worker Employee ID
                 </label>
                 <input
+                  id="sim-employee-id"
+                  name="employee_id"
                   type="text"
+                  autoComplete="username"
                   value={simEmployeeId}
                   onChange={(e) => setSimEmployeeId(e.target.value)}
                   placeholder="e.g. 1042"
@@ -269,10 +272,12 @@ export const AttendanceSystem: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label htmlFor="sim-site-code" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                   Remote Site Location Code
                 </label>
                 <select
+                  id="sim-site-code"
+                  name="site_code"
                   value={simSiteCode}
                   onChange={(e) => {
                     setSimSiteCode(e.target.value);
@@ -289,11 +294,14 @@ export const AttendanceSystem: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label htmlFor="sim-location-spoken" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                   Spoken Location Confirmation (Verbal Audio)
                 </label>
                 <input
+                  id="sim-location-spoken"
+                  name="location_spoken"
                   type="text"
+                  autoComplete="off"
                   value={simLocationSpoken}
                   onChange={(e) => setSimLocationSpoken(e.target.value)}
                   placeholder="e.g. Field Station 014 - Main Depot"
@@ -303,11 +311,14 @@ export const AttendanceSystem: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label htmlFor="sim-shift-time" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                   Shift Start Time Claimed
                 </label>
                 <input
+                  id="sim-shift-time"
+                  name="shift_time"
                   type="text"
+                  autoComplete="off"
                   value={simShiftTime}
                   onChange={(e) => setSimShiftTime(e.target.value)}
                   placeholder="07:00 AM Morning Shift"
@@ -480,12 +491,19 @@ export const AttendanceSystem: React.FC = () => {
 
               <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
+                  <label htmlFor="search-site-query" className="sr-only">
+                    Search site code or region
+                  </label>
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" aria-hidden="true" />
                   <input
-                    type="text"
+                    id="search-site-query"
+                    name="search_site_query"
+                    type="search"
+                    autoComplete="off"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search site code or region..."
+                    aria-label="Search site code or region"
                     className="pl-8 pr-3 py-1.5 text-xs rounded-lg bg-black/40 border border-white/10 text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 w-48"
                   />
                 </div>

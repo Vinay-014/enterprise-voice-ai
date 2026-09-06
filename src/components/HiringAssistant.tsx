@@ -233,11 +233,14 @@ export const HiringAssistant: React.FC = () => {
           <form onSubmit={handleTriggerCall} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label htmlFor="candidate-name" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                   Candidate Name *
                 </label>
                 <input
+                  id="candidate-name"
+                  name="candidate_name"
                   type="text"
+                  autoComplete="name"
                   value={candidateName}
                   onChange={(e) => setCandidateName(e.target.value)}
                   placeholder="e.g. Rachel Foster"
@@ -247,11 +250,14 @@ export const HiringAssistant: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label htmlFor="phone-number" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                   Phone Number (E.164) *
                 </label>
                 <input
+                  id="phone-number"
+                  name="phone_number"
                   type="tel"
+                  autoComplete="tel"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   placeholder="+1-415-555-0182"
@@ -262,11 +268,14 @@ export const HiringAssistant: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              <label htmlFor="target-position" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
                 Target Position *
               </label>
               <input
+                id="target-position"
+                name="position"
                 type="text"
+                autoComplete="organization-title"
                 value={position}
                 onChange={(e) => setPosition(e.target.value)}
                 placeholder="e.g. Senior Backend Engineer (FastAPI / Systems)"
@@ -277,12 +286,14 @@ export const HiringAssistant: React.FC = () => {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                <label htmlFor="custom-prompt" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                   Custom AI Voice Prompt / Screening Directives
                 </label>
                 <span className="text-[10px] text-slate-500 uppercase">Optional</span>
               </div>
               <textarea
+                id="custom-prompt"
+                name="custom_prompt"
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
                 rows={3}
@@ -398,8 +409,10 @@ export const HiringAssistant: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <Sliders className="w-3.5 h-3.5 text-slate-500" />
-            <span className="text-xs text-slate-400">Filter:</span>
+            <label htmlFor="call-status-filter" className="text-xs text-slate-400">Filter:</label>
             <select
+              id="call-status-filter"
+              name="call_status_filter"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               className="text-xs border border-white/10 rounded-lg px-2.5 py-1 bg-black/40 text-slate-200 focus:outline-none focus:border-amber-500"

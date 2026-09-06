@@ -273,7 +273,12 @@ export const PeopleSearchReachout: React.FC = () => {
           </div>
 
           <div>
+            <label htmlFor="reachout-job-description" className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+              Job Description / Target Candidate Specifications
+            </label>
             <textarea
+              id="reachout-job-description"
+              name="reachout_job_description"
               rows={8}
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
