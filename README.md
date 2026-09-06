@@ -12,7 +12,7 @@ A carrier-grade, multimodal enterprise voice automation suite. The platform unif
 
 ---
 
-## 📑 Table of Contents
+##  Table of Contents
 
 - [Executive Summary](#-executive-summary)
 - [System Architecture & Design](#️-system-architecture--design)
@@ -38,7 +38,7 @@ Enterprise voice operations require strict reliability, zero-leak telemetry, and
 
 ---
 
-## 🏗️ System Architecture & Design
+##  System Architecture & Design
 
 ```mermaid
 flowchart TD
