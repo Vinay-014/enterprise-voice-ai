@@ -17,11 +17,11 @@ process.on('uncaughtException', (err) => {
 });
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-const HUNAR_API_KEY = process.env.HUNAR_API_KEY || '';
-const HUNAR_BASE_URL = (process.env.HUNAR_BASE_URL || 'https://api.hunar.ai').replace(/\/$/, '');
-const HUNAR_SCREENING_AGENT_ID = process.env.HUNAR_SCREENING_AGENT_ID || '8bbc73ee-01f7-4d30-96fb-3d4af2f07121';
-const HUNAR_REACHOUT_AGENT_ID = process.env.HUNAR_REACHOUT_AGENT_ID || '0223d9b0-7c18-4277-a672-65a6064c2615';
-const HUNAR_FROM_PHONE_NUMBER = process.env.HUNAR_FROM_PHONE_NUMBER || '+14155550100';
+const HUNAR_API_KEY = process.env.HUNAR_API_KEY || 'hunar_va_live_sk_h9Wk6V6Rv6DawsyRHcmiXRW8AeiL27Xark3ntv8oKx6lJUqGdWXvxQ';
+const HUNAR_BASE_URL = (process.env.HUNAR_BASE_URL || 'https://api.voice.hunar.ai').replace(/\/$/, '');
+const HUNAR_SCREENING_AGENT_ID = process.env.HUNAR_SCREENING_AGENT_ID || '0f870d5a-ba01-4a4a-bc97-611727aa1837';
+const HUNAR_REACHOUT_AGENT_ID = process.env.HUNAR_REACHOUT_AGENT_ID || 'ffc1ebd5-6c44-4864-be80-cbf5e0ae8011';
+const HUNAR_FROM_PHONE_NUMBER = process.env.HUNAR_FROM_PHONE_NUMBER || '+918031139599';
 const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
 
 // Resilient outbound HTTP client with connection timeout and exponential backoff
@@ -531,7 +531,7 @@ async function startServer() {
         try {
           // Primary endpoint on Hunar Voice Gateway
           const endpoint = `${HUNAR_BASE_URL}/external/v1/calls/`;
-          const callbackBase = process.env.APP_PUBLIC_URL || 'https://api.hunar.ai';
+          const callbackBase = process.env.RENDER_EXTERNAL_URL || process.env.APP_PUBLIC_URL || 'https://enterprise-voice-ai.onrender.com';
           const promptText = custom_prompt || `Screen candidate ${candidate_name} for the position of ${position}.`;
 
           const payload: any = {
@@ -1264,7 +1264,7 @@ async function startServer() {
         if (HUNAR_API_KEY) {
           try {
             const endpoint = `${HUNAR_BASE_URL}/external/v1/calls/`;
-            const callbackBase = process.env.APP_PUBLIC_URL || 'https://api.hunar.ai';
+            const callbackBase = process.env.RENDER_EXTERNAL_URL || process.env.APP_PUBLIC_URL || 'https://enterprise-voice-ai.onrender.com';
             const promptText = custom_prompt || `Autonomous talent outreach for ${cand.name} for position ${position || 'Engineering Role'}.`;
 
             const hunarRes = await fetchWithRetry(endpoint, {
