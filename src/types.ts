@@ -17,6 +17,11 @@ export interface CallRecord {
   updated_at?: string | null;
   _notice?: string | null;
   _source?: string | null;
+  lifecycle_status?: 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | string | null;
+  answered_by?: 'HUMAN' | 'MACHINE' | null;
+  retry_reason?: 'NOT_CONNECTED' | 'MACHINE_DETECTED' | string | null;
+  retries_left?: number | null;
+  next_retry_scheduled_at?: string | null;
 }
 
 export interface TriggerCallPayload {

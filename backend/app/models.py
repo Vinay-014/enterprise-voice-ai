@@ -18,7 +18,12 @@ class CallRecord(Base):
     overall_score = Column(Float, default=0.0)
     interest_score = Column(Float, default=0.0)
     answers_summary = Column(Text, nullable=True)
-    disposition = Column(String(50), default="Pending") # Interested, Not Interested, Call Back Later, Unreachable
+    disposition = Column(String(50), default="Pending") # Interested, Not Interested, Call Back Later, Unreachable, Failed
+    lifecycle_status = Column(String(50), default="SCHEDULED", nullable=True) # SCHEDULED, ACTIVE, COMPLETED, FAILED, CANCELLED
+    answered_by = Column(String(50), nullable=True) # HUMAN, MACHINE
+    retry_reason = Column(String(50), nullable=True) # NOT_CONNECTED, MACHINE_DETECTED
+    retries_left = Column(Integer, default=0, nullable=True)
+    next_retry_scheduled_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

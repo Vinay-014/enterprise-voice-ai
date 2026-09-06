@@ -24,6 +24,11 @@ class CallDetailResponse(BaseModel):
     interest_score: float = 0.0
     answers_summary: Optional[str] = None
     disposition: str = "Pending"
+    lifecycle_status: Optional[str] = "SCHEDULED"
+    answered_by: Optional[str] = None
+    retry_reason: Optional[str] = None
+    retries_left: Optional[int] = 0
+    next_retry_scheduled_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -38,14 +43,25 @@ class WebhookAnswer(BaseModel):
 
 class HunarWebhookPayload(BaseModel):
     call_id: str
-    status: str
+    event_type: Optional[str] = "call_status_updated"
+    status: Optional[str] = None
+    agent_id: Optional[str] = None
+    request_id: Optional[str] = None
     duration_seconds: Optional[int] = 0
+    duration_minutes: Optional[float] = 0.0
     transcript: Optional[str] = None
     audio_url: Optional[str] = None
+    recording_url: Optional[str] = None
     overall_score: Optional[float] = 0.0
     interest_score: Optional[float] = 0.0
     answers_summary: Optional[str] = None
     disposition: Optional[str] = "Interested"
+    answered_by: Optional[str] = None
+    retry_reason: Optional[str] = None
+    retries_left: Optional[int] = None
+    next_retry_scheduled_at: Optional[str] = None
+    lifecycle_status: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
 
 # People Search & Reachout

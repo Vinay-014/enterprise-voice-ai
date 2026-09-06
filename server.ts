@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import http from 'http';
 import path from 'path';
+import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 
@@ -17,9 +18,11 @@ process.on('uncaughtException', (err) => {
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const HUNAR_API_KEY = process.env.HUNAR_API_KEY || '';
-const HUNAR_BASE_URL = (process.env.HUNAR_BASE_URL || 'https://api.voice.hunar.ai').replace(/\/$/, '');
+const HUNAR_BASE_URL = (process.env.HUNAR_BASE_URL || 'https://api.hunar.ai').replace(/\/$/, '');
 const HUNAR_SCREENING_AGENT_ID = process.env.HUNAR_SCREENING_AGENT_ID || '8bbc73ee-01f7-4d30-96fb-3d4af2f07121';
 const HUNAR_REACHOUT_AGENT_ID = process.env.HUNAR_REACHOUT_AGENT_ID || '0223d9b0-7c18-4277-a672-65a6064c2615';
+const HUNAR_FROM_PHONE_NUMBER = process.env.HUNAR_FROM_PHONE_NUMBER || '+14155550100';
+const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
 
 // Resilient outbound HTTP client with connection timeout and exponential backoff
 async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2, timeoutMs = 10000): Promise<globalThis.Response | null> {
@@ -50,6 +53,83 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 2,
   return null;
 }
 
+/**
+ * Canonical Hunar Webhook Signature Computation:
+ * Message = UTF-8(timestamp + ".") + rawBodyBytes
+ * Digest = HMAC-SHA256(API_KEY, Message)
+ * Signature = Base64(Digest)
+ */
+export function computeHunarSignature(apiKey: string, rawBody: Buffer, timestamp: string): string {
+  const message = Buffer.concat([
+    Buffer.from(`${timestamp.trim()}.`, 'utf8'),
+    rawBody
+  ]);
+  return crypto.createHmac('sha256', apiKey.trim()).update(message).digest('base64');
+}
+
+/**
+ * Canonical Hunar Webhook Signature Verification:
+ * 1. 300-second timestamp tolerance check (anti-replay attack)
+ * 2. Multi-key signature verification using constant-time comparison
+ */
+export function verifyHunarWebhookSignature(
+  signatureHeader: string | undefined | null,
+  timestampHeader: string | undefined | null,
+  rawBody: Buffer | undefined,
+  trustedApiKeys: string[]
+): boolean {
+  if (!signatureHeader || !signatureHeader.trim() || !timestampHeader || !timestampHeader.trim() || !rawBody) {
+    return false;
+  }
+
+  // 1. Replay attack check (Rejects stale requests > 300 seconds)
+  try {
+    const ts = parseInt(timestampHeader.trim(), 10);
+    if (isNaN(ts) || Math.abs(Math.floor(Date.now() / 1000) - ts) > WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+
+  // 2. Multi-key signature verification using constant-time comparison
+  const timestamp = timestampHeader.trim();
+  const signatures = signatureHeader.split(',').map((s) => s.trim()).filter(Boolean);
+
+  for (const apiKey of trustedApiKeys) {
+    if (!apiKey) continue;
+    const computed = computeHunarSignature(apiKey, rawBody, timestamp);
+    const computedBuf = Buffer.from(computed, 'utf8');
+
+    for (const sig of signatures) {
+      const sigBuf = Buffer.from(sig, 'utf8');
+      if (sigBuf.length === computedBuf.length && crypto.timingSafeEqual(sigBuf, computedBuf)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+// Webhook Idempotency Cache (tracks call_id:event_type)
+const processedWebhooks = new Map<string, number>();
+
+function isWebhookDuplicate(callId: string, eventType: string): boolean {
+  const key = `${callId}:${eventType}`;
+  const now = Date.now();
+  if (processedWebhooks.size > 5000) {
+    for (const [k, time] of processedWebhooks.entries()) {
+      if (now - time > 3600000) processedWebhooks.delete(k);
+    }
+  }
+  if (processedWebhooks.has(key)) {
+    return true;
+  }
+  processedWebhooks.set(key, now);
+  return false;
+}
+
 interface CallRecord {
   id: number;
   call_id: string;
@@ -69,6 +149,11 @@ interface CallRecord {
   updated_at?: string | null;
   _notice?: string | null;
   _source?: string | null;
+  lifecycle_status?: 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | string | null;
+  answered_by?: 'HUMAN' | 'MACHINE' | null;
+  retry_reason?: 'NOT_CONNECTED' | 'MACHINE_DETECTED' | string | null;
+  retries_left?: number | null;
+  next_retry_scheduled_at?: string | null;
 }
 
 interface CandidateProfile {
@@ -357,7 +442,15 @@ const attendanceRecordsDb: AttendanceRecord[] = [
 async function startServer() {
   const app = express();
   const httpServer = http.createServer(app);
-  app.use(express.json());
+
+  // Raw body preservation for cryptographic webhook signature verification
+  app.use(
+    express.json({
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      }
+    })
+  );
 
   // Health routes
   app.get(['/api/health', '/api/v1/health'], (_req: Request, res: Response) => {
@@ -366,6 +459,44 @@ async function startServer() {
       service: 'enterprise-voice-ai-platform',
       version: '1.0.0'
     });
+  });
+
+  // Phone Numbers API proxy
+  app.get('/api/v1/phone-numbers', async (_req: Request, res: Response) => {
+    if (!HUNAR_API_KEY) {
+      return res.json({
+        phone_numbers: [
+          { phone_number: HUNAR_FROM_PHONE_NUMBER, location: 'US Dedicated Voice Line', status: 'ACTIVE' }
+        ]
+      });
+    }
+
+    try {
+      const hunarRes = await fetchWithRetry(`${HUNAR_BASE_URL}/v1/phone-numbers`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': HUNAR_API_KEY,
+          'User-Agent': 'Hunar-Voice-Agents/1.0'
+        }
+      }, 1, 5000);
+
+      if (hunarRes && hunarRes.ok) {
+        const data = await hunarRes.json();
+        return res.json(data);
+      }
+      return res.json({
+        phone_numbers: [
+          { phone_number: HUNAR_FROM_PHONE_NUMBER, location: 'Default Carrier Gateway', status: 'ACTIVE' }
+        ]
+      });
+    } catch {
+      return res.json({
+        phone_numbers: [
+          { phone_number: HUNAR_FROM_PHONE_NUMBER, location: 'Default Carrier Gateway', status: 'ACTIVE' }
+        ]
+      });
+    }
   });
 
   // 1. AI Hiring Assistant
@@ -387,24 +518,39 @@ async function startServer() {
       // Call Hunar Voice API if configured using resilient client with exponential backoff
       if (HUNAR_API_KEY) {
         try {
+          // Primary endpoint on Hunar Voice Gateway
           const endpoint = `${HUNAR_BASE_URL}/external/v1/calls/`;
+          const callbackBase = process.env.APP_PUBLIC_URL || 'https://api.hunar.ai';
+          const promptText = custom_prompt || `Screen candidate ${candidate_name} for the position of ${position}.`;
+
+          const payload: any = {
+            agent_id: HUNAR_SCREENING_AGENT_ID,
+            callee_name: candidate_name,
+            mobile_number: phone_number,
+            to_number: phone_number,
+            custom_data: {
+              company: 'Enterprise Voice AI Platform',
+              job_role: position,
+              job_description: promptText,
+              candidate_name: candidate_name
+            },
+            request_id: generatedCallId,
+            callback_config: {
+              call_status_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+              call_recording_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+              call_result_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+              call_summary_callback_url: `${callbackBase}/api/v1/webhooks/hunar`
+            }
+          };
+
           const hunarRes = await fetchWithRetry(endpoint, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'X-API-Key': HUNAR_API_KEY,
-              'Authorization': `Bearer ${HUNAR_API_KEY}`
+              'User-Agent': 'Hunar-Voice-Agents/1.0'
             },
-            body: JSON.stringify({
-              agent_id: HUNAR_SCREENING_AGENT_ID,
-              callee_name: candidate_name,
-              mobile_number: phone_number,
-              custom_data: {
-                job_role: position,
-                agent_prompt: custom_prompt || `Screen candidate ${candidate_name} for ${position}.`
-              },
-              request_id: generatedCallId
-            })
+            body: JSON.stringify(payload)
           });
 
           if (hunarRes && hunarRes.ok) {
@@ -412,20 +558,20 @@ async function startServer() {
             if (data.id || data.call_id) generatedCallId = data.id || data.call_id;
             if (data.status) {
               const s = String(data.status).toUpperCase();
-              if (s === 'SCHEDULED' || s === 'INITIATED') hunarStatus = 'Initiated';
+              if (s === 'SCHEDULED' || s === 'INITIATED' || s === 'NOT_STARTED') hunarStatus = 'Initiated';
               else if (s === 'IN_PROGRESS' || s === 'RINGING') hunarStatus = 'Ringing';
               else if (s === 'COMPLETED') hunarStatus = 'Completed';
-              else if (s === 'FAILED') {
+              else if (s === 'FAILED' || s === 'NOT_CONNECTED' || s === 'CANCELLED') {
                 hunarStatus = 'Failed';
                 hunarDisposition = 'Failed';
               }
             }
           } else if (hunarRes) {
-            // Upstream rejection from Hunar Voice API (e.g. 401/402/422 unwhitelisted number or trial restriction)
+            // Upstream rejection from Hunar Voice API
             let errDetail = `HTTP ${hunarRes.status}`;
             try {
               const errJson = (await hunarRes.json()) as any;
-              errDetail = errJson.detail || errJson.message || errJson.error || JSON.stringify(errJson);
+              errDetail = errJson.message || errJson.detail || errJson.error || JSON.stringify(errJson);
             } catch {
               try { errDetail = await hunarRes.text(); } catch {}
             }
@@ -433,9 +579,9 @@ async function startServer() {
 
             hunarStatus = 'Failed';
             hunarDisposition = 'Failed';
-            upstreamNotice = `Hunar Voice API rejected dispatch (HTTP ${hunarRes.status}: ${errDetail}). Account trial authorization restriction or unwhitelisted destination number.`;
+            upstreamNotice = `Hunar Voice API rejected dispatch (HTTP ${hunarRes.status}: ${errDetail}). Verify X-API-Key and agent configuration.`;
             answersSummary = `Upstream dispatch rejected by Hunar API (HTTP ${hunarRes.status}: ${errDetail}).`;
-            transcript = `PSTN Dispatch Failed: Hunar Voice API rejected call to ${phone_number}. Reason: ${errDetail} (HTTP ${hunarRes.status}). Verify destination number whitelisting or trial PSTN permissions on Hunar.`;
+            transcript = `PSTN Dispatch Failed: Hunar Voice API rejected call to ${phone_number}. Reason: ${errDetail} (HTTP ${hunarRes.status}).`;
           }
         } catch (apiErr: any) {
           console.warn('Hunar API outbound call dispatch exception:', apiErr?.message);
@@ -529,36 +675,48 @@ async function startServer() {
     }
 
     try {
-      // Poll real Hunar API for current call status
-      const endpoint = `${HUNAR_BASE_URL}/external/v1/calls/${call.call_id}`;
+      // Poll real Hunar API for current call status (GET /v1/calls/{call_id})
+      const endpoint = `${HUNAR_BASE_URL}/v1/calls/${call.call_id}`;
       const hunarRes = await fetchWithRetry(endpoint, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': HUNAR_API_KEY,
-          'Authorization': `Bearer ${HUNAR_API_KEY}`
+          'User-Agent': 'Hunar-Voice-Agents/1.0'
         }
       }, 1, 5000);
 
       if (hunarRes && hunarRes.ok) {
         const data = (await hunarRes.json()) as any;
 
-        // Map Hunar API status strings → internal status enum
+        // Map Hunar API attempt status and lifecycle status
         const rawStatus = String(data.status || '').toUpperCase();
         if (rawStatus === 'COMPLETED' || rawStatus === 'COMPLETE') call.status = 'Completed';
         else if (rawStatus === 'IN_PROGRESS' || rawStatus === 'ACTIVE') call.status = 'In Progress';
         else if (rawStatus === 'RINGING') call.status = 'Ringing';
-        else if (rawStatus === 'FAILED' || rawStatus === 'ERROR') call.status = 'Failed';
+        else if (rawStatus === 'FAILED' || rawStatus === 'NOT_CONNECTED' || rawStatus === 'CANCELLED' || rawStatus === 'ERROR') {
+          call.status = 'Failed';
+        }
+
+        if (data.lifecycle_status) call.lifecycle_status = data.lifecycle_status;
+        if (data.answered_by) call.answered_by = data.answered_by;
+        if (data.retry_reason) call.retry_reason = data.retry_reason;
+        if (data.retries_left !== undefined) call.retries_left = Number(data.retries_left);
+        if (data.next_retry_scheduled_at) call.next_retry_scheduled_at = data.next_retry_scheduled_at;
 
         if (data.duration_seconds) call.duration_seconds = Number(data.duration_seconds);
         if (data.transcript) call.transcript = data.transcript;
-        if (data.audio_url || data.audio_recording_url) {
-          call.audio_recording_url = data.audio_url || data.audio_recording_url;
+        if (data.recording_url || data.audio_url || data.audio_recording_url) {
+          call.audio_recording_url = data.recording_url || data.audio_url || data.audio_recording_url;
         }
         if (data.overall_score != null) call.overall_score = Number(data.overall_score);
         if (data.interest_score != null) call.interest_score = Number(data.interest_score);
         if (data.answers_summary) call.answers_summary = data.answers_summary;
         if (data.disposition) call.disposition = data.disposition;
+        if (data.result && typeof data.result === 'object') {
+          if (data.result.interested) call.disposition = data.result.interested === 'Yes' ? 'Interested' : 'Not Interested';
+          if (data.result.reason) call.answers_summary = data.result.reason;
+        }
         call.updated_at = new Date().toISOString();
 
         return res.json({ ...call, _source: 'hunar_api_live' });
@@ -596,58 +754,131 @@ async function startServer() {
   app.get('/api/v1/hiring/calls/:callId/refresh', refreshCallStatusHandler);
   app.post('/api/v1/hiring/calls/:callId/refresh', refreshCallStatusHandler);
 
-  // Webhook Receiver with defensive payload parsing
+  // Webhook Receiver with HMAC-SHA256 Signature Validation and Async Event Processing
   app.post('/api/v1/webhooks/hunar', (req: Request, res: Response) => {
     try {
+      const sigHeader = (req.headers['x-hunar-signature'] || req.headers['X-Hunar-Signature']) as string | undefined;
+      const tsHeader = (req.headers['x-hunar-timestamp'] || req.headers['X-Hunar-Timestamp']) as string | undefined;
+      const rawBody = (req as any).rawBody as Buffer | undefined;
+
+      // 1. Signature Verification (if headers provided and API key configured)
+      if (HUNAR_API_KEY && (sigHeader || tsHeader)) {
+        const isValid = verifyHunarWebhookSignature(sigHeader, tsHeader, rawBody, [HUNAR_API_KEY]);
+        if (!isValid) {
+          console.warn('Hunar webhook signature verification failed');
+          return res.status(401).json({ error: 'Unauthorized: Invalid webhook signature or timestamp tolerance expired' });
+        }
+      }
+
       const body = req.body || {};
       const call_id = body.call_id || body.callId || (body.data && body.data.call_id);
+      const event_type = body.event_type || body.type || 'call_status_updated';
+
       if (!call_id) {
         return res.status(200).json({ status: 'ignored', reason: 'Missing call_id parameter' });
       }
 
-      const status = body.status || (body.data && body.data.status) || 'Completed';
-      const duration_seconds = Number(body.duration_seconds || (body.data && body.data.duration_seconds) || 0);
-      const transcript = body.transcript || (body.data && body.data.transcript) || null;
-      const audio_url = body.audio_url || body.audio_recording_url || null;
-      const overall_score = Number(body.overall_score || 0);
-      const interest_score = Number(body.interest_score || 0);
-      const answers_summary = body.answers_summary || null;
-      const disposition = body.disposition || 'Interested';
-
-      let call = callsDb.find((c) => c.call_id === call_id);
-      if (!call) {
-        callCounter += 1;
-        call = {
-          id: callCounter,
-          call_id,
-          candidate_name: (body.metadata && body.metadata.candidate_name) || 'Webhook Candidate',
-          phone_number: (body.metadata && body.metadata.phone_number) || '+1-555-0199',
-          position: (body.metadata && body.metadata.position) || 'Candidate',
-          status: (status as any) || 'Completed',
-          duration_seconds,
-          overall_score,
-          interest_score,
-          answers_summary,
-          disposition: (disposition as any) || 'Interested',
-          created_at: new Date().toISOString()
-        };
-        callsDb.unshift(call);
-      } else {
-        if (status) call.status = status;
-        if (duration_seconds !== undefined) call.duration_seconds = duration_seconds;
-        if (transcript) call.transcript = transcript;
-        if (audio_url) call.audio_recording_url = audio_url;
-        if (overall_score !== undefined) call.overall_score = overall_score;
-        if (interest_score !== undefined) call.interest_score = interest_score;
-        if (answers_summary) call.answers_summary = answers_summary;
-        if (disposition) call.disposition = disposition;
-        call.updated_at = new Date().toISOString();
+      // 2. Idempotency Check (call_id + event_type)
+      if (isWebhookDuplicate(call_id, event_type)) {
+        return res.status(200).json({ status: 'idempotent_ignored', call_id, event_type });
       }
 
-      return res.json({
-        status: 'success',
-        call_id: call.call_id,
-        updated_status: call.status
+      // 3. Immediate 200 OK Response (<15s rule)
+      res.status(200).json({
+        status: 'received',
+        call_id,
+        event_type
+      });
+
+      // 4. Asynchronous Background Execution
+      setImmediate(() => {
+        try {
+          let call = callsDb.find((c) => c.call_id === call_id);
+          if (!call) {
+            callCounter += 1;
+            call = {
+              id: callCounter,
+              call_id,
+              candidate_name: (body.metadata && body.metadata.candidate_name) || body.callee_name || 'Candidate',
+              phone_number: (body.metadata && body.metadata.phone_number) || body.to_number || '+1-555-0199',
+              position: (body.metadata && body.metadata.position) || 'Candidate',
+              status: 'Initiated',
+              duration_seconds: 0,
+              overall_score: 0.0,
+              interest_score: 0.0,
+              answers_summary: null,
+              disposition: 'Pending',
+              created_at: new Date().toISOString()
+            };
+            callsDb.unshift(call);
+          }
+
+          // Handle the 4 Hunar Voice Agent Event Types:
+          // A. call_status_updated
+          if (event_type === 'call_status_updated' || !body.event_type) {
+            const rawStatus = String(body.status || (body.data && body.data.status) || '').toUpperCase();
+            if (rawStatus === 'COMPLETED') call.status = 'Completed';
+            else if (rawStatus === 'IN_PROGRESS' || rawStatus === 'RINGING') call.status = 'Ringing';
+            else if (rawStatus === 'NOT_CONNECTED' || rawStatus === 'FAILED' || rawStatus === 'CANCELLED') {
+              call.status = 'Failed';
+              call.disposition = 'Failed';
+            }
+            if (body.duration_seconds !== undefined) call.duration_seconds = Number(body.duration_seconds);
+            if (body.transcript) call.transcript = body.transcript;
+            if (body.answered_by) call.answered_by = body.answered_by;
+            if (body.retry_reason) call.retry_reason = body.retry_reason;
+            if (body.retries_left !== undefined) call.retries_left = Number(body.retries_left);
+            if (body.lifecycle_status) call.lifecycle_status = body.lifecycle_status;
+          }
+
+          // B. call_recording_done
+          if (event_type === 'call_recording_done' || body.recording_url || body.audio_url || body.audio_recording_url) {
+            const recUrl = body.recording_url || body.audio_url || body.audio_recording_url || (body.data && body.data.recording_url);
+            if (recUrl) call.audio_recording_url = recUrl;
+          }
+
+          // C. call_result_done
+          if (event_type === 'call_result_done' || body.result) {
+            const resData = body.result || body.data?.result || {};
+            if (resData.interested) {
+              call.disposition = resData.interested.toLowerCase().includes('yes') ? 'Interested' : 'Not Interested';
+            }
+            if (resData.qualified) {
+              call.overall_score = resData.qualified.toLowerCase().includes('yes') ? 92.0 : 65.0;
+            }
+            if (resData.reason) {
+              call.answers_summary = resData.reason;
+            }
+            if (body.overall_score !== undefined) call.overall_score = Number(body.overall_score);
+            if (body.interest_score !== undefined) call.interest_score = Number(body.interest_score);
+          }
+
+          // D. call_summary (Consolidated terminal update)
+          if (event_type === 'call_summary') {
+            const rawStatus = String(body.status || 'COMPLETED').toUpperCase();
+            if (rawStatus === 'COMPLETED') call.status = 'Completed';
+            else if (rawStatus === 'NOT_CONNECTED' || rawStatus === 'FAILED' || rawStatus === 'CANCELLED') {
+              call.status = 'Failed';
+              call.disposition = 'Failed';
+            }
+            if (body.duration_seconds !== undefined) call.duration_seconds = Number(body.duration_seconds);
+            if (body.recording_url || body.audio_url) call.audio_recording_url = body.recording_url || body.audio_url;
+            if (body.transcript) call.transcript = body.transcript;
+            if (body.result) {
+              const resData = body.result;
+              if (resData.interested) call.disposition = resData.interested.toLowerCase().includes('yes') ? 'Interested' : 'Not Interested';
+              if (resData.reason) call.answers_summary = resData.reason;
+            }
+            if (body.disposition) call.disposition = body.disposition;
+            if (body.overall_score !== undefined) call.overall_score = Number(body.overall_score);
+            if (body.interest_score !== undefined) call.interest_score = Number(body.interest_score);
+            if (body.lifecycle_status) call.lifecycle_status = body.lifecycle_status;
+          }
+
+          call.updated_at = new Date().toISOString();
+        } catch (asyncErr) {
+          console.warn('Async webhook handling error:', asyncErr);
+        }
       });
     } catch (err: any) {
       console.warn('Webhook parse error caught gracefully:', err);
@@ -1022,22 +1253,34 @@ async function startServer() {
         if (HUNAR_API_KEY) {
           try {
             const endpoint = `${HUNAR_BASE_URL}/external/v1/calls/`;
+            const callbackBase = process.env.APP_PUBLIC_URL || 'https://api.hunar.ai';
+            const promptText = custom_prompt || `Autonomous talent outreach for ${cand.name} for position ${position || 'Engineering Role'}.`;
+
             const hunarRes = await fetchWithRetry(endpoint, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 'X-API-Key': HUNAR_API_KEY,
-                'Authorization': `Bearer ${HUNAR_API_KEY}`
+                'User-Agent': 'Hunar-Voice-Agents/1.0'
               },
               body: JSON.stringify({
                 agent_id: HUNAR_REACHOUT_AGENT_ID,
                 callee_name: cand.name,
                 mobile_number: cand.contact_phone,
+                to_number: cand.contact_phone,
                 custom_data: {
+                  company: 'Enterprise Voice AI Platform',
                   job_role: position || 'Engineering Role',
-                  agent_prompt: custom_prompt || `Autonomous talent outreach for ${cand.name} for position ${position}.`
+                  job_description: promptText,
+                  candidate_name: cand.name
                 },
-                request_id: callId
+                request_id: callId,
+                callback_config: {
+                  call_status_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+                  call_recording_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+                  call_result_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+                  call_summary_callback_url: `${callbackBase}/api/v1/webhooks/hunar`
+                }
               })
             });
             if (hunarRes && hunarRes.ok) {
@@ -1200,23 +1443,24 @@ async function startServer() {
     // Real Hunar API IVR dispatch if outbound verification phone is configured
     if (HUNAR_API_KEY && process.env.HUNAR_ATTENDANCE_PHONE) {
       try {
-        await fetchWithRetry(`${HUNAR_BASE_URL}/external/v1/calls/`, {
+        await fetchWithRetry(`${HUNAR_BASE_URL}/v1/calls`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'X-API-Key': HUNAR_API_KEY,
-            'Authorization': `Bearer ${HUNAR_API_KEY}`
+            'User-Agent': 'Hunar-Voice-Agents/1.0'
           },
           body: JSON.stringify({
+            to_number: process.env.HUNAR_ATTENDANCE_PHONE,
+            from_phone_number: HUNAR_FROM_PHONE_NUMBER,
             agent_id: process.env.HUNAR_IVR_AGENT_ID || HUNAR_REACHOUT_AGENT_ID,
-            callee_name: `Worker #${employee_id}`,
-            mobile_number: process.env.HUNAR_ATTENDANCE_PHONE,
-            custom_data: {
+            variables: {
               event: 'ivr_attendance_verification',
+              worker_name: `Worker #${employee_id}`,
               employee_id,
               site_code,
               status,
-              voiceprint_match
+              voiceprint_match: voiceprint_match ? 'yes' : 'no'
             }
           })
         }, 1, 3000);

@@ -115,12 +115,56 @@ def get_call_history(
         query = query.filter(CallRecord.status == status)
     return query.order_by(CallRecord.created_at.desc()).all()
 
-@router.get("/calls/{call_id}", response_model=CallDetailResponse)
-def get_single_call(call_id: str, db: Session = Depends(get_db)):
+@router.get("/phone-numbers")
+async def get_phone_numbers():
     """
-    Retrieve full transcript, analysis metrics, and recording URL for a specific call.
+    Proxy endpoint to retrieve available organization phone numbers from Hunar API.
+    """
+    return await hunar_service.get_phone_numbers()
+
+@router.get("/calls/{call_id}/refresh", response_model=CallDetailResponse)
+@router.post("/calls/{call_id}/refresh", response_model=CallDetailResponse)
+async def refresh_single_call(call_id: str, db: Session = Depends(get_db)):
+    """
+    Polls real-time call status from Hunar API and updates database record.
     """
     call = db.query(CallRecord).filter(CallRecord.call_id == call_id).first()
     if not call:
         raise HTTPException(status_code=404, detail="Call record not found")
+
+    live_data = await hunar_service.get_call_status(call_id)
+    if live_data and "status" in live_data:
+        raw_status = str(live_data["status"]).upper()
+        if raw_status in ("COMPLETED", "COMPLETE"):
+            call.status = "Completed"
+        elif raw_status in ("IN_PROGRESS", "ACTIVE"):
+            call.status = "In Progress"
+        elif raw_status == "RINGING":
+            call.status = "Ringing"
+        elif raw_status in ("FAILED", "NOT_CONNECTED", "CANCELLED", "ERROR"):
+            call.status = "Failed"
+            call.disposition = "Failed"
+
+        if live_data.get("lifecycle_status"):
+            call.lifecycle_status = live_data["lifecycle_status"]
+        if live_data.get("answered_by"):
+            call.answered_by = live_data["answered_by"]
+        if live_data.get("retry_reason"):
+            call.retry_reason = live_data["retry_reason"]
+        if live_data.get("retries_left") is not None:
+            call.retries_left = int(live_data["retries_left"])
+        if live_data.get("duration_seconds"):
+            call.duration_seconds = int(live_data["duration_seconds"])
+        if live_data.get("transcript"):
+            call.transcript = live_data["transcript"]
+        if live_data.get("recording_url") or live_data.get("audio_url"):
+            call.audio_recording_url = live_data.get("recording_url") or live_data.get("audio_url")
+        if live_data.get("disposition"):
+            call.disposition = live_data["disposition"]
+
+        call.updated_at = datetime.datetime.utcnow()
+        db.commit()
+        db.refresh(call)
+
     return call
+
