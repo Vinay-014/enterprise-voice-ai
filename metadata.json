@@ -1,0 +1,6 @@
+{
+  "name": "Enterprise Voice AI Platform",
+  "description": "Enterprise voice AI suite featuring AI Hiring Assistant, Candidate Search & Bulk Voice Reachout, and Smartphone-Free Remote Attendance Architecture.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

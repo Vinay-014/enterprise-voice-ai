@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Enterprise Voice AI Platform</title>
+    <meta name="description" content="Enterprise voice AI suite featuring AI Hiring Assistant, Candidate Search & Bulk Voice Reachout, and Smartphone-Free Remote Attendance Architecture." />
+    <meta property="og:title" content="Enterprise Voice AI Platform" />
+    <meta property="og:description" content="Enterprise voice AI suite featuring AI Hiring Assistant, Candidate Search & Bulk Voice Reachout, and Smartphone-Free Remote Attendance Architecture." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        function isWsError(err) {
+          if (!err) return false;
+          var msg = (err.message || String(err) || '').toLowerCase();
+          return msg.indexOf('websocket') !== -1 || msg.indexOf('ws:') !== -1 || msg.indexOf('closed without opened') !== -1;
+        }
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event && (event.reason || event.detail);
+          if (isWsError(reason)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+        window.addEventListener('error', function(event) {
+          var err = event && (event.error || event.message);
+          if (isWsError(err)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
