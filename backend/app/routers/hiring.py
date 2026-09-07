@@ -1,20 +1,178 @@
 import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 try:
     from app.database import get_db
     from app.models import CallRecord
-    from app.schemas import TriggerCallRequest, CallDetailResponse
+    from app.schemas import TriggerCallRequest, CallDetailResponse, BackfillResponse
     from app.services.hunar_service import hunar_service
+    from app.routers.webhooks import (
+        _extract_transcript,
+        _extract_summary,
+        _resolve_score,
+        _resolve_interest_score,
+        _resolve_interest,
+    )
 except ImportError:
     from ..database import get_db
     from ..models import CallRecord
-    from ..schemas import TriggerCallRequest, CallDetailResponse
+    from ..schemas import TriggerCallRequest, CallDetailResponse, BackfillResponse
     from ..services.hunar_service import hunar_service
+    from .webhooks import (
+        _extract_transcript,
+        _extract_summary,
+        _resolve_score,
+        _resolve_interest_score,
+        _resolve_interest,
+    )
 
 router = APIRouter(prefix="/api/v1/hiring", tags=["AI Hiring Assistant"])
+
+
+def is_placeholder_transcript(transcript: Optional[str]) -> bool:
+    """
+    Detects if the stored transcript is an empty, temporary, or initial carrier dispatch placeholder.
+    """
+    if not transcript or not transcript.strip():
+        return True
+    t = transcript.strip().lower()
+    placeholders = [
+        "carrier route established",
+        "voice screening call dispatched",
+        "bulk outreach voice call queued",
+        "outreach voice call queued",
+        "awaiting live dialogue",
+        "awaiting connect",
+        "network timeout",
+        "[screening call dispatched",
+        "[bulk outreach",
+        "[pending",
+    ]
+    return any(p in t for p in placeholders) or t.startswith("[")
+
+
+def is_placeholder_summary(summary: Optional[str]) -> bool:
+    """
+    Detects if the stored answers_summary is a static fallback placeholder.
+    """
+    if not summary or not summary.strip():
+        return True
+    s = summary.strip().lower()
+    placeholders = [
+        "initial screening for",
+        "call initiated",
+        "batch campaign dispatched",
+        "outreach campaign dispatched",
+        "screening call initiated",
+        "awaiting agent evaluation",
+        "awaiting candidate connection",
+        "awaiting connect",
+        "live audio stream processing",
+    ]
+    return any(p in s for p in placeholders)
+
+
+def _hydrate_call_record(call: CallRecord, live_data: Dict[str, Any], preserve_duration: bool = True) -> bool:
+    """
+    Safely hydrates a CallRecord from Hunar live API data:
+      - Extracts and updates transcripts (text or turn arrays)
+      - Extracts and updates evaluation summaries
+      - Extracts and updates overall_score and interest_score
+      - Extracts and updates disposition
+      - Updates audio_recording_url and lifecycle metadata
+      - STRICTLY PRESERVES: call_id, created_at, candidate_name, phone_number, position
+      - PRESERVES duration_seconds if already recorded (>0) unless existing is 0
+    Returns True if any meaningful field was hydrated.
+    """
+    if not live_data or not isinstance(live_data, dict):
+        return False
+
+    updated = False
+    raw_status = str(live_data.get("status", "")).upper()
+    if raw_status in ("COMPLETED", "COMPLETE"):
+        call.status = "Completed"
+        updated = True
+    elif raw_status in ("IN_PROGRESS", "ACTIVE"):
+        call.status = "In Progress"
+        updated = True
+    elif raw_status == "RINGING":
+        call.status = "Ringing"
+        updated = True
+    elif raw_status in ("FAILED", "NOT_CONNECTED", "CANCELLED", "ERROR"):
+        call.status = "Failed"
+        if not call.disposition or call.disposition == "Pending":
+            call.disposition = "Failed"
+        updated = True
+
+    if live_data.get("lifecycle_status"):
+        call.lifecycle_status = live_data["lifecycle_status"]
+    if live_data.get("answered_by"):
+        call.answered_by = live_data["answered_by"]
+    if live_data.get("retry_reason"):
+        call.retry_reason = live_data["retry_reason"]
+    if live_data.get("retries_left") is not None:
+        call.retries_left = int(live_data["retries_left"])
+
+    # Duration preservation rule: retain existing historical duration if non-zero
+    new_duration = live_data.get("duration_seconds")
+    if new_duration is not None:
+        try:
+            dur_int = int(new_duration)
+            if call.duration_seconds is None or call.duration_seconds == 0:
+                call.duration_seconds = dur_int
+                updated = True
+            elif not preserve_duration and dur_int > 0:
+                call.duration_seconds = dur_int
+                updated = True
+        except (ValueError, TypeError):
+            pass
+
+    result_sub = live_data.get("result") if isinstance(live_data.get("result"), dict) else {}
+
+    # Extract transcript across strings and turn arrays
+    transcript = _extract_transcript(result_sub, live_data)
+    if transcript:
+        call.transcript = transcript
+        updated = True
+
+    # Extract summary across all known keys
+    summary = _extract_summary(result_sub, live_data)
+    if summary:
+        call.answers_summary = summary
+        updated = True
+
+    # Extract scores
+    score = _resolve_score(result_sub, live_data)
+    if score is not None:
+        call.overall_score = score
+        updated = True
+
+    interest_score = _resolve_interest_score(result_sub, live_data)
+    if interest_score is not None:
+        call.interest_score = interest_score
+        updated = True
+
+    # Extract disposition
+    disposition = _resolve_interest(result_sub.get("interested") or result_sub.get("interest"))
+    if disposition:
+        call.disposition = disposition
+        updated = True
+    elif live_data.get("disposition"):
+        call.disposition = live_data["disposition"]
+        updated = True
+
+    rec_url = live_data.get("recording_url") or live_data.get("audio_url") or live_data.get("audio_recording_url")
+    if rec_url:
+        call.audio_recording_url = rec_url
+        updated = True
+
+    if updated:
+        call.updated_at = datetime.datetime.utcnow()
+
+    return updated
+
 
 def seed_default_calls_if_empty(db: Session):
     count = db.query(CallRecord).count()
@@ -73,6 +231,7 @@ def seed_default_calls_if_empty(db: Session):
             db.add(c)
         db.commit()
 
+
 @router.post("/calls/trigger", response_model=CallDetailResponse)
 async def trigger_screening_call(payload: TriggerCallRequest, db: Session = Depends(get_db)):
     """
@@ -96,9 +255,10 @@ async def trigger_screening_call(payload: TriggerCallRequest, db: Session = Depe
         custom_prompt=payload.custom_prompt,
         status=hunar_result.get("status", "Initiated"),
         duration_seconds=0,
-        transcript=f"Voice screening call dispatched to {payload.phone_number} via Hunar Voice engine. Status: {hunar_result.get('status', 'Initiated')}.",
+        transcript=f"[Screening call dispatched to {payload.phone_number} via Hunar Voice engine. Awaiting live dialogue stream...]",
         overall_score=0.0,
         interest_score=0.0,
+        answers_summary="Screening call initiated. Awaiting agent evaluation.",
         disposition="Pending",
         created_at=datetime.datetime.utcnow()
     )
@@ -106,6 +266,7 @@ async def trigger_screening_call(payload: TriggerCallRequest, db: Session = Depe
     db.commit()
     db.refresh(new_record)
     return new_record
+
 
 @router.get("/calls", response_model=List[CallDetailResponse])
 def get_call_history(
@@ -121,6 +282,32 @@ def get_call_history(
         query = query.filter(CallRecord.status == status)
     return query.order_by(CallRecord.created_at.desc()).all()
 
+
+@router.get("/calls/{call_id}", response_model=CallDetailResponse)
+async def get_single_call(call_id: str, db: Session = Depends(get_db)):
+    """
+    Retrieves a single call record. If the record contains placeholder text or zero scores
+    while completed, performs an on-demand lazy sync with Hunar Voice API while preserving
+    all original identifiers and historical timestamps.
+    """
+    call = db.query(CallRecord).filter(CallRecord.call_id == call_id).first()
+    if not call:
+        raise HTTPException(status_code=404, detail="Call record not found")
+
+    # On-demand lazy hydration for historical / placeholder records
+    if is_placeholder_transcript(call.transcript) or is_placeholder_summary(call.answers_summary) or (call.overall_score == 0.0 and call.status in ("Completed", "In Progress")):
+        try:
+            live_data = await hunar_service.get_call_status(call_id)
+            if live_data and "status" in live_data:
+                if _hydrate_call_record(call, live_data, preserve_duration=True):
+                    db.commit()
+                    db.refresh(call)
+        except Exception:
+            pass
+
+    return call
+
+
 @router.get("/phone-numbers")
 async def get_phone_numbers():
     """
@@ -128,11 +315,13 @@ async def get_phone_numbers():
     """
     return await hunar_service.get_phone_numbers()
 
+
 @router.get("/calls/{call_id}/refresh", response_model=CallDetailResponse)
 @router.post("/calls/{call_id}/refresh", response_model=CallDetailResponse)
 async def refresh_single_call(call_id: str, db: Session = Depends(get_db)):
     """
-    Polls real-time call status from Hunar API and updates database record.
+    Explicitly polls real-time call status from Hunar API and updates database record,
+    safely preserving historical timestamps and identifiers.
     """
     call = db.query(CallRecord).filter(CallRecord.call_id == call_id).first()
     if not call:
@@ -140,37 +329,52 @@ async def refresh_single_call(call_id: str, db: Session = Depends(get_db)):
 
     live_data = await hunar_service.get_call_status(call_id)
     if live_data and "status" in live_data:
-        raw_status = str(live_data["status"]).upper()
-        if raw_status in ("COMPLETED", "COMPLETE"):
-            call.status = "Completed"
-        elif raw_status in ("IN_PROGRESS", "ACTIVE"):
-            call.status = "In Progress"
-        elif raw_status == "RINGING":
-            call.status = "Ringing"
-        elif raw_status in ("FAILED", "NOT_CONNECTED", "CANCELLED", "ERROR"):
-            call.status = "Failed"
-            call.disposition = "Failed"
-
-        if live_data.get("lifecycle_status"):
-            call.lifecycle_status = live_data["lifecycle_status"]
-        if live_data.get("answered_by"):
-            call.answered_by = live_data["answered_by"]
-        if live_data.get("retry_reason"):
-            call.retry_reason = live_data["retry_reason"]
-        if live_data.get("retries_left") is not None:
-            call.retries_left = int(live_data["retries_left"])
-        if live_data.get("duration_seconds"):
-            call.duration_seconds = int(live_data["duration_seconds"])
-        if live_data.get("transcript"):
-            call.transcript = live_data["transcript"]
-        if live_data.get("recording_url") or live_data.get("audio_url"):
-            call.audio_recording_url = live_data.get("recording_url") or live_data.get("audio_url")
-        if live_data.get("disposition"):
-            call.disposition = live_data["disposition"]
-
-        call.updated_at = datetime.datetime.utcnow()
+        _hydrate_call_record(call, live_data, preserve_duration=True)
         db.commit()
         db.refresh(call)
 
     return call
+
+
+@router.post("/calls/backfill", response_model=BackfillResponse)
+async def backfill_historical_calls(db: Session = Depends(get_db)):
+    """
+    Batch migration endpoint that iterates through all stored calls, identifies any
+    with missing or placeholder transcripts ("Carrier route established...") or zero scores,
+    and queries the Hunar API to hydrate rich dialogue history and evaluation metrics.
+    Preserves all immutable historical fields (call_id, created_at, duration).
+    """
+    calls = db.query(CallRecord).all()
+    total_scanned = len(calls)
+    hydrated_ids: List[str] = []
+    already_hydrated = 0
+
+    for call in calls:
+        needs_sync = (
+            is_placeholder_transcript(call.transcript)
+            or is_placeholder_summary(call.answers_summary)
+            or (call.overall_score == 0.0 and call.status in ("Completed", "In Progress"))
+        )
+        if not needs_sync:
+            already_hydrated += 1
+            continue
+
+        try:
+            live_data = await hunar_service.get_call_status(call.call_id)
+            if live_data and "status" in live_data:
+                if _hydrate_call_record(call, live_data, preserve_duration=True):
+                    hydrated_ids.append(call.call_id)
+        except Exception:
+            continue
+
+    if hydrated_ids:
+        db.commit()
+
+    return BackfillResponse(
+        total_scanned=total_scanned,
+        total_hydrated=len(hydrated_ids),
+        already_hydrated=already_hydrated,
+        hydrated_call_ids=hydrated_ids,
+        status="Completed"
+    )
 

@@ -122,10 +122,20 @@ const processedWebhooks = new Map<string, number>();
  * the same event_type (e.g. 'call_status_updated').
  */
 function webhookSequenceHint(body: Record<string, any>): string {
-  if (body.result || body.qualified || body.interested) return 'result';
-  if (body.recording_url || body.audio_url || body.audio_recording_url) return 'recording';
-  if (body.answers_summary || body.summary ||
-      body.overall_score !== undefined || body.interest_score !== undefined) return 'summary';
+  const data = body.data && typeof body.data === 'object' ? body.data : {};
+  if (body.result || data.result || body.qualified || body.interested) return 'result';
+  if (body.recording_url || body.audio_url || body.audio_recording_url || data.recording_url) return 'recording';
+  if (
+    body.answers_summary ||
+    body.summary ||
+    body.notes ||
+    data.answers_summary ||
+    data.summary ||
+    body.overall_score !== undefined ||
+    body.interest_score !== undefined
+  ) {
+    return 'summary';
+  }
   return 'status';
 }
 
@@ -169,8 +179,9 @@ function resolveScore(result: Record<string, any>, payload: Record<string, any>)
       if (!isNaN(n)) return n;
     }
   }
-  if (payload.overall_score !== undefined && payload.overall_score !== null) {
-    const n = Number(payload.overall_score);
+  const topScore = payload.overall_score !== undefined ? payload.overall_score : (payload.data && payload.data.overall_score);
+  if (topScore !== undefined && topScore !== null) {
+    const n = Number(topScore);
     if (!isNaN(n)) return n;
   }
   if (result.qualified !== undefined && result.qualified !== null) {
@@ -183,7 +194,8 @@ function resolveScore(result: Record<string, any>, payload: Record<string, any>)
  * Extracts an interest/engagement score from result or payload.
  */
 function resolveInterestScore(result: Record<string, any>, payload: Record<string, any>): number | null {
-  for (const src of [result, payload]) {
+  const data = payload.data && typeof payload.data === 'object' ? payload.data : {};
+  for (const src of [result, payload, data]) {
     for (const key of ['interest_score', 'engagement_score', 'enthusiasm_score'] as const) {
       const raw = (src as any)[key];
       if (raw !== undefined && raw !== null) {
@@ -196,14 +208,221 @@ function resolveInterestScore(result: Record<string, any>, payload: Record<strin
 }
 
 /**
- * Returns the best available answers_summary text.
+ * Returns the best available answers_summary / evaluation text from the payload.
+ * Checks result sub-dict, top-level payload, and payload.data across all known Hunar summary keys.
  */
 function extractSummary(result: Record<string, any>, payload: Record<string, any>): string | null {
-  for (const key of ['answers_summary', 'reason', 'summary', 'notes'] as const) {
-    const val = (result as any)[key] || (payload as any)[key];
-    if (val) return String(val);
+  const data = payload.data && typeof payload.data === 'object' ? payload.data : {};
+  const sources = [result, payload, data];
+  const summaryKeys = [
+    'answers_summary', 'summary', 'notes', 'reason', 'evaluation',
+    'feedback', 'assessment', 'analysis', 'call_summary', 'ai_summary',
+    'disposition_notes', 'candidate_summary'
+  ];
+
+  for (const src of sources) {
+    for (const key of summaryKeys) {
+      const val = (src as any)[key];
+      if (typeof val === 'string' && val.trim()) {
+        return val.trim();
+      } else if (Array.isArray(val) && val.length > 0) {
+        const items = val.map((x) => String(x).trim()).filter(Boolean);
+        if (items.length > 0) return items.join('\n');
+      } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+        const nested = val.summary || val.overview || val.text || val.notes;
+        if (typeof nested === 'string' && nested.trim()) return nested.trim();
+      }
+    }
   }
   return null;
+}
+
+/**
+ * Extracts complete dialogue transcript from Hunar webhook payloads.
+ * Supports direct string fields as well as array-of-turns dialogue structures.
+ */
+function extractTranscript(result: Record<string, any>, payload: Record<string, any>): string | null {
+  const data = payload.data && typeof payload.data === 'object' ? payload.data : {};
+  const sources = [result, payload, data];
+
+  // 1. Direct string lookups
+  const stringKeys = [
+    'transcript', 'dialogue_text', 'conversation_text',
+    'full_transcript', 'call_transcript', 'dialogue', 'conversation', 'text'
+  ];
+  for (const src of sources) {
+    for (const key of stringKeys) {
+      const val = (src as any)[key];
+      if (typeof val === 'string' && val.trim()) {
+        return val.trim();
+      }
+    }
+  }
+
+  // 2. Array-of-turns lookups
+  const arrayKeys = ['dialogue', 'messages', 'conversation', 'turns', 'utterances', 'transcript', 'history'];
+  for (const src of sources) {
+    for (const key of arrayKeys) {
+      const val = (src as any)[key];
+      if (Array.isArray(val) && val.length > 0) {
+        const lines: string[] = [];
+        for (const turn of val) {
+          if (typeof turn === 'string' && turn.trim()) {
+            lines.push(turn.trim());
+          } else if (turn && typeof turn === 'object') {
+            const rawRole = String(
+              turn.role || turn.speaker || turn.type || turn.sender || turn.from || 'Agent'
+            ).trim().toLowerCase();
+            const text = String(
+              turn.text || turn.content || turn.message || turn.dialogue || turn.utterance || turn.transcript || ''
+            ).trim();
+
+            if (text) {
+              let label = 'Agent';
+              if (['agent', 'assistant', 'ai', 'bot', 'system', 'ivr'].includes(rawRole)) {
+                label = 'Agent';
+              } else if (['user', 'candidate', 'callee', 'human', 'worker', 'caller'].includes(rawRole)) {
+                label = 'Candidate';
+              } else {
+                label = rawRole.charAt(0).toUpperCase() + rawRole.slice(1);
+              }
+
+              if (text.toLowerCase().startsWith(`${label.toLowerCase()}:`)) {
+                lines.push(text);
+              } else {
+                lines.push(`${label}: ${text}`);
+              }
+            }
+          }
+        }
+        if (lines.length > 0) {
+          return lines.join('\n\n');
+        }
+      }
+    }
+  }
+  return null;
+}
+
+export function isPlaceholderTranscript(transcript?: string | null): boolean {
+  if (!transcript || !transcript.trim()) return true;
+  const t = transcript.trim().toLowerCase();
+  const placeholders = [
+    'carrier route established',
+    'voice screening call dispatched',
+    'bulk outreach voice call queued',
+    'outreach voice call queued',
+    'awaiting live dialogue',
+    'awaiting connect',
+    'network timeout',
+    '[screening call dispatched',
+    '[bulk outreach',
+    '[pending',
+  ];
+  return placeholders.some((p) => t.includes(p)) || t.startsWith('[');
+}
+
+export function isPlaceholderSummary(summary?: string | null): boolean {
+  if (!summary || !summary.trim()) return true;
+  const s = summary.trim().toLowerCase();
+  const placeholders = [
+    'initial screening for',
+    'call initiated',
+    'batch campaign dispatched',
+    'outreach campaign dispatched',
+    'screening call initiated',
+    'awaiting agent evaluation',
+    'awaiting candidate connection',
+    'awaiting connect',
+    'live audio stream processing',
+  ];
+  return placeholders.some((p) => s.includes(p));
+}
+
+export function hydrateCallRecord(call: CallRecord, liveData: Record<string, any>, preserveDuration = true): boolean {
+  if (!liveData || typeof liveData !== 'object') return false;
+  let updated = false;
+
+  const rawStatus = String(liveData.status || '').toUpperCase();
+  if (rawStatus === 'COMPLETED' || rawStatus === 'COMPLETE') {
+    call.status = 'Completed';
+    updated = true;
+  } else if (rawStatus === 'IN_PROGRESS' || rawStatus === 'ACTIVE') {
+    call.status = 'In Progress';
+    updated = true;
+  } else if (rawStatus === 'RINGING') {
+    call.status = 'Ringing';
+    updated = true;
+  } else if (['FAILED', 'NOT_CONNECTED', 'CANCELLED', 'ERROR'].includes(rawStatus)) {
+    call.status = 'Failed';
+    if (!call.disposition || call.disposition === 'Pending') call.disposition = 'Failed';
+    updated = true;
+  }
+
+  if (liveData.lifecycle_status) call.lifecycle_status = liveData.lifecycle_status;
+  if (liveData.answered_by) call.answered_by = liveData.answered_by;
+  if (liveData.retry_reason) call.retry_reason = liveData.retry_reason;
+  if (liveData.retries_left !== undefined) call.retries_left = Number(liveData.retries_left);
+
+  if (liveData.duration_seconds !== undefined && liveData.duration_seconds !== null) {
+    const dur = Number(liveData.duration_seconds);
+    if (!isNaN(dur)) {
+      if (!call.duration_seconds || call.duration_seconds === 0) {
+        call.duration_seconds = dur;
+        updated = true;
+      } else if (!preserveDuration && dur > 0) {
+        call.duration_seconds = dur;
+        updated = true;
+      }
+    }
+  }
+
+  const resultSub = liveData.result && typeof liveData.result === 'object' ? liveData.result : {};
+
+  const transcript = extractTranscript(resultSub, liveData);
+  if (transcript) {
+    call.transcript = transcript;
+    updated = true;
+  }
+
+  const summary = extractSummary(resultSub, liveData);
+  if (summary) {
+    call.answers_summary = summary;
+    updated = true;
+  }
+
+  const score = resolveScore(resultSub, liveData);
+  if (score !== null) {
+    call.overall_score = score;
+    updated = true;
+  }
+
+  const iScore = resolveInterestScore(resultSub, liveData);
+  if (iScore !== null) {
+    call.interest_score = iScore;
+    updated = true;
+  }
+
+  const disposition = resolveInterest(resultSub.interested ?? resultSub.interest);
+  if (disposition) {
+    call.disposition = disposition;
+    updated = true;
+  } else if (liveData.disposition) {
+    call.disposition = liveData.disposition;
+    updated = true;
+  }
+
+  const recUrl = liveData.recording_url || liveData.audio_url || liveData.audio_recording_url;
+  if (recUrl) {
+    call.audio_recording_url = recUrl;
+    updated = true;
+  }
+
+  if (updated) {
+    call.updated_at = new Date().toISOString();
+  }
+
+  return updated;
 }
 
 interface CallRecord {
@@ -876,11 +1095,28 @@ async function startServer() {
     return res.json(callsDb);
   });
 
-  app.get('/api/v1/hiring/calls/:callId', (req: Request, res: Response) => {
+  app.get('/api/v1/hiring/calls/:callId', async (req: Request, res: Response) => {
     const call = callsDb.find((c) => c.call_id === req.params.callId);
     if (!call) {
       return res.status(404).json({ detail: 'Call not found' });
     }
+
+    // Lazy on-demand hydration for historical / placeholder records
+    const needsSync =
+      isPlaceholderTranscript(call.transcript) ||
+      isPlaceholderSummary(call.answers_summary) ||
+      (call.overall_score === 0 && (call.status === 'Completed' || call.status === 'In Progress'));
+
+    if (needsSync && HUNAR_API_KEY) {
+      try {
+        const hunarRes = await fetchHunarCallStatus(call.call_id, HUNAR_SCREENING_AGENT_ID);
+        if (hunarRes && hunarRes.ok) {
+          const data = (await hunarRes.json()) as any;
+          hydrateCallRecord(call, data, true);
+        }
+      } catch {}
+    }
+
     return res.json(call);
   });
 
@@ -916,42 +1152,7 @@ async function startServer() {
 
       if (hunarRes && hunarRes.ok) {
         const data = (await hunarRes.json()) as any;
-
-        // Map Hunar API attempt status and lifecycle status
-        const rawStatus = String(data.status || '').toUpperCase();
-        if (rawStatus === 'COMPLETED' || rawStatus === 'COMPLETE') call.status = 'Completed';
-        else if (rawStatus === 'IN_PROGRESS' || rawStatus === 'ACTIVE') call.status = 'In Progress';
-        else if (rawStatus === 'RINGING') call.status = 'Ringing';
-        else if (rawStatus === 'FAILED' || rawStatus === 'NOT_CONNECTED' || rawStatus === 'CANCELLED' || rawStatus === 'ERROR') {
-          call.status = 'Failed';
-        }
-
-        if (data.lifecycle_status) call.lifecycle_status = data.lifecycle_status;
-        if (data.answered_by) call.answered_by = data.answered_by;
-        if (data.retry_reason) call.retry_reason = data.retry_reason;
-        if (data.retries_left !== undefined) call.retries_left = Number(data.retries_left);
-        if (data.next_retry_scheduled_at) call.next_retry_scheduled_at = data.next_retry_scheduled_at;
-
-        if (data.duration_seconds) call.duration_seconds = Number(data.duration_seconds);
-        if (data.transcript) call.transcript = data.transcript;
-        if (data.recording_url || data.audio_url || data.audio_recording_url) {
-          call.audio_recording_url = data.recording_url || data.audio_url || data.audio_recording_url;
-        }
-        if (data.overall_score != null) call.overall_score = Number(data.overall_score);
-        if (data.interest_score != null) call.interest_score = Number(data.interest_score);
-        if (data.answers_summary) call.answers_summary = data.answers_summary;
-        if (data.disposition) call.disposition = data.disposition;
-        if (data.result && typeof data.result === 'object') {
-          // Use resolveInterest so all truthy variants are accepted
-          const refreshDisposition = resolveInterest(data.result.interested ?? data.result.interest);
-          if (refreshDisposition) call.disposition = refreshDisposition;
-          const refreshScore = resolveScore(data.result, data);
-          if (refreshScore !== null) call.overall_score = refreshScore;
-          const refreshSummary = extractSummary(data.result, data);
-          if (refreshSummary) call.answers_summary = refreshSummary;
-        }
-        call.updated_at = new Date().toISOString();
-
+        hydrateCallRecord(call, data, true);
         return res.json({ ...call, _source: 'hunar_api_live' });
       }
 
@@ -987,6 +1188,45 @@ async function startServer() {
 
   app.get('/api/v1/hiring/calls/:callId/refresh', refreshCallStatusHandler);
   app.post('/api/v1/hiring/calls/:callId/refresh', refreshCallStatusHandler);
+
+  // Batch Backfill Endpoint for Historical Call Hydration
+  app.post('/api/v1/hiring/calls/backfill', async (_req: Request, res: Response) => {
+    const totalScanned = callsDb.length;
+    const hydratedIds: string[] = [];
+    let alreadyHydrated = 0;
+
+    for (const call of callsDb) {
+      const needsSync =
+        isPlaceholderTranscript(call.transcript) ||
+        isPlaceholderSummary(call.answers_summary) ||
+        (call.overall_score === 0 && (call.status === 'Completed' || call.status === 'In Progress'));
+
+      if (!needsSync) {
+        alreadyHydrated += 1;
+        continue;
+      }
+
+      if (HUNAR_API_KEY) {
+        try {
+          const hunarRes = await fetchHunarCallStatus(call.call_id, HUNAR_SCREENING_AGENT_ID);
+          if (hunarRes && hunarRes.ok) {
+            const data = (await hunarRes.json()) as any;
+            if (hydrateCallRecord(call, data, true)) {
+              hydratedIds.push(call.call_id);
+            }
+          }
+        } catch {}
+      }
+    }
+
+    return res.json({
+      total_scanned: totalScanned,
+      total_hydrated: hydratedIds.length,
+      already_hydrated: alreadyHydrated,
+      hydrated_call_ids: hydratedIds,
+      status: 'Completed'
+    });
+  });
 
   // Webhook Receiver with HMAC-SHA256 Signature Validation and Async Event Processing
   app.post('/api/v1/webhooks/hunar', (req: Request, res: Response) => {
@@ -1030,15 +1270,18 @@ async function startServer() {
       // 4. Asynchronous Background Execution
       setImmediate(() => {
         try {
+          const bodyData = body.data && typeof body.data === 'object' ? body.data : {};
+          const resData: Record<string, any> = body.result || bodyData.result || {};
+
           let call = callsDb.find((c) => c.call_id === call_id);
           if (!call) {
             callCounter += 1;
             call = {
               id: callCounter,
               call_id,
-              candidate_name: (body.metadata && body.metadata.candidate_name) || body.callee_name || 'Candidate',
-              phone_number: (body.metadata && body.metadata.phone_number) || body.to_number || '+1-555-0199',
-              position: (body.metadata && body.metadata.position) || 'Candidate',
+              candidate_name: (body.metadata && body.metadata.candidate_name) || (bodyData.metadata && bodyData.metadata.candidate_name) || body.callee_name || bodyData.callee_name || 'Candidate',
+              phone_number: (body.metadata && body.metadata.phone_number) || (bodyData.metadata && bodyData.metadata.phone_number) || body.to_number || bodyData.to_number || '+1-555-0199',
+              position: (body.metadata && body.metadata.position) || (bodyData.metadata && bodyData.metadata.position) || 'Candidate',
               status: 'Initiated',
               duration_seconds: 0,
               overall_score: 0.0,
@@ -1053,7 +1296,7 @@ async function startServer() {
           // Handle the 4 Hunar Voice Agent Event Types:
           // A. call_status_updated
           if (event_type === 'call_status_updated' || !body.event_type) {
-            const rawStatus = String(body.status || (body.data && body.data.status) || '').toUpperCase();
+            const rawStatus = String(body.status || bodyData.status || '').toUpperCase();
             if (rawStatus === 'COMPLETED') call.status = 'Completed';
             else if (rawStatus === 'IN_PROGRESS' || rawStatus === 'RINGING') call.status = 'Ringing';
             else if (rawStatus === 'NOT_CONNECTED' || rawStatus === 'FAILED' || rawStatus === 'CANCELLED') {
@@ -1061,23 +1304,41 @@ async function startServer() {
               call.disposition = 'Failed';
             }
             if (body.duration_seconds !== undefined) call.duration_seconds = Number(body.duration_seconds);
-            if (body.transcript) call.transcript = body.transcript;
-            if (body.answered_by) call.answered_by = body.answered_by;
-            if (body.retry_reason) call.retry_reason = body.retry_reason;
+            else if (bodyData.duration_seconds !== undefined) call.duration_seconds = Number(bodyData.duration_seconds);
+
+            const transcript = extractTranscript(resData, body);
+            if (transcript) call.transcript = transcript;
+
+            const summary = extractSummary(resData, body);
+            if (summary) call.answers_summary = summary;
+
+            if (body.answered_by || bodyData.answered_by) call.answered_by = body.answered_by || bodyData.answered_by;
+            if (body.retry_reason || bodyData.retry_reason) call.retry_reason = body.retry_reason || bodyData.retry_reason;
             if (body.retries_left !== undefined) call.retries_left = Number(body.retries_left);
-            if (body.lifecycle_status) call.lifecycle_status = body.lifecycle_status;
+            else if (bodyData.retries_left !== undefined) call.retries_left = Number(bodyData.retries_left);
+            if (body.lifecycle_status || bodyData.lifecycle_status) call.lifecycle_status = body.lifecycle_status || bodyData.lifecycle_status;
           }
 
           // B. call_recording_done
-          if (event_type === 'call_recording_done' || body.recording_url || body.audio_url || body.audio_recording_url) {
-            const recUrl = body.recording_url || body.audio_url || body.audio_recording_url || (body.data && body.data.recording_url);
+          if (
+            event_type === 'call_recording_done' ||
+            body.recording_url ||
+            body.audio_url ||
+            body.audio_recording_url ||
+            bodyData.recording_url
+          ) {
+            const recUrl = body.recording_url || body.audio_url || body.audio_recording_url || bodyData.recording_url;
             if (recUrl) call.audio_recording_url = recUrl;
+
+            const transcript = extractTranscript(resData, body);
+            if (transcript) call.transcript = transcript;
+
+            const summary = extractSummary(resData, body);
+            if (summary) call.answers_summary = summary;
           }
 
           // C. call_result_done
-          if (event_type === 'call_result_done' || body.result) {
-            const resData: Record<string, any> = body.result || body.data?.result || {};
-
+          if (event_type === 'call_result_done' || body.result || bodyData.result) {
             // Disposition — accepts 'yes','true','1','interested' variants
             const disposition = resolveInterest(resData.interested ?? resData.interest);
             if (disposition) call.disposition = disposition;
@@ -1095,12 +1356,16 @@ async function startServer() {
             const summary = extractSummary(resData, body);
             if (summary) call.answers_summary = summary;
 
-            // Transcript embedded in result
-            const transcript = resData.transcript || body.transcript;
+            // Transcript embedded in result or payload
+            const transcript = extractTranscript(resData, body);
             if (transcript) call.transcript = transcript;
 
+            // Recording url
+            const recUrl = body.recording_url || body.audio_url || body.audio_recording_url || bodyData.recording_url;
+            if (recUrl) call.audio_recording_url = recUrl;
+
             // Status update from result payload
-            const rawStatus = String(body.status || '').toUpperCase();
+            const rawStatus = String(body.status || bodyData.status || '').toUpperCase();
             if (rawStatus === 'COMPLETED') call.status = 'Completed';
             else if (rawStatus === 'NOT_CONNECTED' || rawStatus === 'FAILED' || rawStatus === 'CANCELLED') {
               call.status = 'Failed';
@@ -1110,7 +1375,7 @@ async function startServer() {
 
           // D. call_summary (Consolidated terminal update)
           if (event_type === 'call_summary') {
-            const rawStatus = String(body.status || 'COMPLETED').toUpperCase();
+            const rawStatus = String(body.status || bodyData.status || 'COMPLETED').toUpperCase();
             if (rawStatus === 'COMPLETED') call.status = 'Completed';
             else if (rawStatus === 'NOT_CONNECTED' || rawStatus === 'FAILED' || rawStatus === 'CANCELLED') {
               call.status = 'Failed';
@@ -1118,31 +1383,33 @@ async function startServer() {
             }
 
             if (body.duration_seconds !== undefined) call.duration_seconds = Number(body.duration_seconds);
-            if (body.recording_url || body.audio_url) call.audio_recording_url = body.recording_url || body.audio_url;
+            else if (bodyData.duration_seconds !== undefined) call.duration_seconds = Number(bodyData.duration_seconds);
+
+            const recUrl = body.recording_url || body.audio_url || body.audio_recording_url || bodyData.recording_url;
+            if (recUrl) call.audio_recording_url = recUrl;
 
             // Transcript
-            const summaryResData: Record<string, any> = body.result || {};
-            const transcript = summaryResData.transcript || body.transcript;
+            const transcript = extractTranscript(resData, body);
             if (transcript) call.transcript = transcript;
 
             // Disposition — resolve all truthy variants from result or top-level
-            const disposition = resolveInterest(summaryResData.interested ?? summaryResData.interest);
+            const disposition = resolveInterest(resData.interested ?? resData.interest);
             if (disposition) call.disposition = disposition;
             // Top-level explicit disposition overrides result-level
-            if (body.disposition) call.disposition = body.disposition;
+            if (body.disposition || bodyData.disposition) call.disposition = body.disposition || bodyData.disposition;
 
             // Scores — full resolution pipeline
-            const score = resolveScore(summaryResData, body);
+            const score = resolveScore(resData, body);
             if (score !== null) call.overall_score = score;
 
-            const iScore = resolveInterestScore(summaryResData, body);
+            const iScore = resolveInterestScore(resData, body);
             if (iScore !== null) call.interest_score = iScore;
 
             // Answers summary
-            const summary = extractSummary(summaryResData, body);
+            const summary = extractSummary(resData, body);
             if (summary) call.answers_summary = summary;
 
-            if (body.lifecycle_status) call.lifecycle_status = body.lifecycle_status;
+            if (body.lifecycle_status || bodyData.lifecycle_status) call.lifecycle_status = body.lifecycle_status || bodyData.lifecycle_status;
           }
 
           call.updated_at = new Date().toISOString();

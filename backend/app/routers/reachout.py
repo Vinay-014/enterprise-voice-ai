@@ -92,7 +92,10 @@ async def trigger_bulk_reachout(payload: BulkReachoutRequest, db: Session = Depe
             custom_prompt=custom_prompt,
             status="Initiated",
             duration_seconds=0,
-            transcript=f"Bulk outreach voice call queued for {profile['name']} ({profile['contact_phone']}) under campaign {campaign_id}.",
+            transcript=f"[Bulk outreach voice call queued for {profile['name']} ({profile['contact_phone']}) under campaign {campaign_id}. Awaiting connect...]",
+            overall_score=0.0,
+            interest_score=0.0,
+            answers_summary="Outreach campaign dispatched. Awaiting candidate connection.",
             disposition="Pending",
             created_at=datetime.datetime.utcnow()
         )

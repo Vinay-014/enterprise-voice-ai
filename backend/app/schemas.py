@@ -35,6 +35,13 @@ class CallDetailResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class BackfillResponse(BaseModel):
+    total_scanned: int
+    total_hydrated: int
+    already_hydrated: int
+    hydrated_call_ids: List[str]
+    status: str = "Completed"
+
 # Webhook
 class WebhookAnswer(BaseModel):
     question: str

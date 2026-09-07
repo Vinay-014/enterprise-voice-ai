@@ -106,18 +106,101 @@ def _resolve_interest_score(result: Dict[str, Any], top_payload: Dict[str, Any])
 
 def _extract_summary(result: Dict[str, Any], top_payload: Dict[str, Any]) -> Optional[str]:
     """
-    Returns the best available answers_summary / reason text from the payload.
+    Returns the best available answers_summary / evaluation text from the payload.
+    Checks result sub-dict, top-level payload, and payload.data across all known Hunar summary keys.
     """
-    for key in ("answers_summary", "reason", "summary", "notes"):
-        val = result.get(key) or top_payload.get(key)
-        if val:
-            return str(val)
+    data_dict = top_payload.get("data") if isinstance(top_payload.get("data"), dict) else {}
+    sources = [result, top_payload, data_dict]
+
+    summary_keys = (
+        "answers_summary", "summary", "notes", "reason", "evaluation",
+        "feedback", "assessment", "analysis", "call_summary", "ai_summary",
+        "disposition_notes", "candidate_summary"
+    )
+    for src in sources:
+        for key in summary_keys:
+            val = src.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+            elif isinstance(val, list) and val:
+                # Array of summary bullets or strings
+                items = [str(x).strip() for x in val if str(x).strip()]
+                if items:
+                    return "\n".join(items) if len(items) > 1 else items[0]
+            elif isinstance(val, dict) and val:
+                # Nested summary object (e.g. {"summary": "...", "overview": "..."})
+                nested_summary = val.get("summary") or val.get("overview") or val.get("text") or val.get("notes")
+                if isinstance(nested_summary, str) and nested_summary.strip():
+                    return nested_summary.strip()
     return None
 
 
 def _extract_transcript(result: Dict[str, Any], top_payload: Dict[str, Any]) -> Optional[str]:
-    """Returns transcript text from the result sub-dict or top-level payload."""
-    return result.get("transcript") or top_payload.get("transcript") or None
+    """
+    Extracts complete dialogue transcript from Hunar webhook payloads.
+    Supports:
+      - Direct string fields (transcript, dialogue_text, conversation_text, full_transcript, etc.)
+      - Turn array fields (dialogue, messages, conversation, turns, utterances, history)
+      - Nested data / result wrappers
+    """
+    data_dict = top_payload.get("data") if isinstance(top_payload.get("data"), dict) else {}
+    sources = [result, top_payload, data_dict]
+
+    # 1. Direct string lookups
+    string_keys = (
+        "transcript", "dialogue_text", "conversation_text",
+        "full_transcript", "call_transcript", "dialogue", "conversation", "text"
+    )
+    for src in sources:
+        for key in string_keys:
+            val = src.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+
+    # 2. Array-of-turns lookups
+    array_keys = ("dialogue", "messages", "conversation", "turns", "utterances", "transcript", "history")
+    for src in sources:
+        for key in array_keys:
+            val = src.get(key)
+            if isinstance(val, list) and val:
+                lines = []
+                for turn in val:
+                    if isinstance(turn, str) and turn.strip():
+                        lines.append(turn.strip())
+                    elif isinstance(turn, dict):
+                        role = str(
+                            turn.get("role")
+                            or turn.get("speaker")
+                            or turn.get("type")
+                            or turn.get("sender")
+                            or turn.get("from")
+                            or "Agent"
+                        ).strip().lower()
+                        text = str(
+                            turn.get("text")
+                            or turn.get("content")
+                            or turn.get("message")
+                            or turn.get("dialogue")
+                            or turn.get("utterance")
+                            or turn.get("transcript")
+                            or ""
+                        ).strip()
+                        if text:
+                            if role in ("agent", "assistant", "ai", "bot", "system", "ivr"):
+                                label = "Agent"
+                            elif role in ("user", "candidate", "callee", "human", "worker", "caller"):
+                                label = "Candidate"
+                            else:
+                                label = role.title()
+
+                            # Avoid duplicate label if text already starts with "Agent:" or "Candidate:"
+                            if text.lower().startswith(f"{label.lower()}:"):
+                                lines.append(text)
+                            else:
+                                lines.append(f"{label}: {text}")
+                if lines:
+                    return "\n\n".join(lines)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -152,15 +235,24 @@ def _sequence_hint(payload: Dict[str, Any]) -> str:
     Hunar callbacks this payload most likely represents, independent of the
     event_type field.  This is used to prevent false-positive deduplication.
     """
-    if payload.get("result") or payload.get("qualified") or payload.get("interested"):
+    data_dict = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    if payload.get("result") or data_dict.get("result") or payload.get("qualified") or payload.get("interested"):
         return "result"
-    if payload.get("recording_url") or payload.get("audio_url") or payload.get("audio_recording_url"):
+    if (
+        payload.get("recording_url")
+        or payload.get("audio_url")
+        or payload.get("audio_recording_url")
+        or data_dict.get("recording_url")
+    ):
         return "recording"
     if (
         payload.get("answers_summary")
         or payload.get("summary")
+        or payload.get("notes")
         or payload.get("overall_score") is not None
         or payload.get("interest_score") is not None
+        or data_dict.get("answers_summary")
+        or data_dict.get("summary")
     ):
         return "summary"
     return "status"
@@ -242,8 +334,9 @@ def process_webhook_payload_async(payload: Dict[str, Any]):
     if not call_id:
         return
 
-    # Resolve result sub-dict once for all handlers below
-    result: Dict[str, Any] = payload.get("result") or {}
+    # Resolve result sub-dict once for all handlers below (checking top-level and data wrapper)
+    data_dict = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    result: Dict[str, Any] = payload.get("result") or data_dict.get("result") or {}
     if not isinstance(result, dict):
         result = {}
 
@@ -251,15 +344,17 @@ def process_webhook_payload_async(payload: Dict[str, Any]):
     try:
         call = db.query(CallRecord).filter(CallRecord.call_id == call_id).first()
         if not call:
-            meta = payload.get("metadata") or {}
+            meta = payload.get("metadata") or data_dict.get("metadata") or {}
             candidate_name = (
                 meta.get("candidate_name")
                 or payload.get("callee_name")
+                or data_dict.get("callee_name")
                 or "Candidate"
             )
             phone_number = (
                 meta.get("phone_number")
                 or payload.get("to_number")
+                or data_dict.get("to_number")
                 or "+1-555-0100"
             )
             position = meta.get("position", "Candidate")
@@ -278,7 +373,7 @@ def process_webhook_payload_async(payload: Dict[str, Any]):
         # 1. call_status_updated
         # ------------------------------------------------------------------
         if event_type == "call_status_updated" or not payload.get("event_type"):
-            raw_status = str(payload.get("status", "")).upper()
+            raw_status = str(payload.get("status") or data_dict.get("status") or "").upper()
             if raw_status == "COMPLETED":
                 call.status = "Completed"
             elif raw_status in ("IN_PROGRESS", "RINGING"):
@@ -289,17 +384,27 @@ def process_webhook_payload_async(payload: Dict[str, Any]):
 
             if payload.get("duration_seconds") is not None:
                 call.duration_seconds = int(payload["duration_seconds"])
+            elif data_dict.get("duration_seconds") is not None:
+                call.duration_seconds = int(data_dict["duration_seconds"])
+
             transcript = _extract_transcript(result, payload)
             if transcript:
                 call.transcript = transcript
-            if payload.get("answered_by"):
-                call.answered_by = payload["answered_by"]
-            if payload.get("retry_reason"):
-                call.retry_reason = payload["retry_reason"]
+
+            summary = _extract_summary(result, payload)
+            if summary:
+                call.answers_summary = summary
+
+            if payload.get("answered_by") or data_dict.get("answered_by"):
+                call.answered_by = payload.get("answered_by") or data_dict.get("answered_by")
+            if payload.get("retry_reason") or data_dict.get("retry_reason"):
+                call.retry_reason = payload.get("retry_reason") or data_dict.get("retry_reason")
             if payload.get("retries_left") is not None:
                 call.retries_left = int(payload["retries_left"])
-            if payload.get("lifecycle_status"):
-                call.lifecycle_status = payload["lifecycle_status"]
+            elif data_dict.get("retries_left") is not None:
+                call.retries_left = int(data_dict["retries_left"])
+            if payload.get("lifecycle_status") or data_dict.get("lifecycle_status"):
+                call.lifecycle_status = payload.get("lifecycle_status") or data_dict.get("lifecycle_status")
 
         # ------------------------------------------------------------------
         # 2. call_recording_done
@@ -309,19 +414,29 @@ def process_webhook_payload_async(payload: Dict[str, Any]):
             or payload.get("recording_url")
             or payload.get("audio_url")
             or payload.get("audio_recording_url")
+            or data_dict.get("recording_url")
         ):
             rec_url = (
                 payload.get("recording_url")
                 or payload.get("audio_url")
                 or payload.get("audio_recording_url")
+                or data_dict.get("recording_url")
             )
             if rec_url:
                 call.audio_recording_url = rec_url
 
+            transcript = _extract_transcript(result, payload)
+            if transcript:
+                call.transcript = transcript
+
+            summary = _extract_summary(result, payload)
+            if summary:
+                call.answers_summary = summary
+
         # ------------------------------------------------------------------
         # 3. call_result_done
         # ------------------------------------------------------------------
-        if event_type == "call_result_done" or payload.get("result"):
+        if event_type == "call_result_done" or payload.get("result") or data_dict.get("result"):
             # Disposition from result.interested (all known truthy variants)
             disposition = _resolve_interest(
                 result.get("interested") or result.get("interest")
@@ -345,13 +460,18 @@ def process_webhook_payload_async(payload: Dict[str, Any]):
             if summary:
                 call.answers_summary = summary
 
-            # Transcript embedded in result
+            # Transcript embedded in result or payload
             transcript = _extract_transcript(result, payload)
             if transcript:
                 call.transcript = transcript
 
+            # Recording URL if present
+            rec_url = payload.get("recording_url") or payload.get("audio_url") or data_dict.get("recording_url")
+            if rec_url:
+                call.audio_recording_url = rec_url
+
             # Status update if present in result payload
-            raw_status = str(payload.get("status", "")).upper()
+            raw_status = str(payload.get("status") or data_dict.get("status") or "").upper()
             if raw_status == "COMPLETED":
                 call.status = "Completed"
             elif raw_status in ("NOT_CONNECTED", "FAILED", "CANCELLED"):
