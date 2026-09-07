@@ -144,7 +144,7 @@ export const HiringAssistant: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={fetchCalls}
+            onClick={() => fetchCalls()}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 transition-colors shadow-xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCalls ? 'animate-spin' : ''}`} />

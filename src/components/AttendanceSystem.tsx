@@ -37,7 +37,7 @@ export const AttendanceSystem: React.FC = () => {
   // Simulator state
   const [simEmployeeId, setSimEmployeeId] = useState('1042');
   const [simSiteCode, setSimSiteCode] = useState('SITE-014');
-  const [simLocationSpoken, setSimLocationSpoken] = useState('Field Station 014 - Main Warehouse');
+  const [simLocationSpoken, setSimLocationSpoken] = useState('Field Station 014 - London Gateway Distribution Hub');
   const [simShiftTime, setSimShiftTime] = useState('07:00 AM Morning Shift');
   const [simBeaconMatch, setSimBeaconMatch] = useState(true);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -173,12 +173,12 @@ export const AttendanceSystem: React.FC = () => {
                 <Phone className="w-3.5 h-3.5 text-amber-500" />
                 <span>Tier 1: Zero-Smartphone Edge</span>
               </div>
-              <h4 className="text-sm font-bold text-white mb-2">Inbound Toll-Free IVR</h4>
+              <h4 className="text-sm font-bold text-white mb-2">Inbound Global PSTN / IVR Gateway</h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Workers dial a dedicated 1-800 toll-free number from any standard landline or 2G feature phone. Hardware cost per worker: $0. No app installations, zero battery concerns, and full resilience during weather blackouts.
+                Workers dial dedicated regional toll-free / PSTN direct lines (+91, +44, +49, +65, +81, +1) from standard landlines or 2G feature phones. Hardware cost per worker: $0. No app installations, zero screen hazard, full resilience during remote power blackouts.
               </p>
               <div className="mt-4 pt-3 border-t border-white/10 text-[11px] text-slate-500 font-mono">
-                Protocol: SIP Trunking / PSTN
+                Protocol: Global SIP Trunking / PSTN
               </div>
             </div>
 
@@ -445,7 +445,7 @@ export const AttendanceSystem: React.FC = () => {
             <div className="p-5 bg-[#121212] rounded-xl border border-white/10 shadow-xl">
               <div className="text-xs text-slate-400 font-medium">Remote Sites</div>
               <div className="text-2xl font-bold text-white mt-1 font-mono">{overview.total_sites} Locations</div>
-              <div className="text-xs text-slate-500 mt-0.5">Across 6 Geographic Regions</div>
+              <div className="text-xs text-slate-500 mt-0.5">Across 10 Global Industrial Regions</div>
             </div>
 
             <div className="p-5 bg-[#121212] rounded-xl border border-white/10 shadow-xl">

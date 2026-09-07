@@ -705,102 +705,108 @@ const callsDb: CallRecord[] = [
 const CANDIDATE_POOL = [
   {
     candidate_id: 'cand_01',
-    name: 'Sarah Chen',
-    title: 'Senior Full-Stack Engineer',
-    location: 'San Francisco, CA',
-    contact_phone: '+1-415-555-0142',
-    email: 'sarah.chen@techconnect.io',
-    skills: ['TypeScript', 'Next.js', 'React', 'Python', 'FastAPI', 'Docker', 'PostgreSQL'],
-    experience_years: 7,
+    name: 'Priya Sharma',
+    title: 'Lead Distributed Systems Architect',
+    location: 'Bengaluru, Karnataka, India',
+    contact_phone: '+91-98450-71234',
+    email: 'priya.sharma@cloudcore.in',
+    skills: ['Python', 'FastAPI', 'Kafka', 'Docker', 'Kubernetes', 'PostgreSQL', 'Redis', 'System Design'],
+    experience_years: 8,
     outreach_status: 'Ready for Reachout'
   },
   {
     candidate_id: 'cand_02',
     name: 'Marcus Aurelius Vance',
-    title: 'Staff Backend Architect',
-    location: 'New York, NY',
-    contact_phone: '+1-212-555-0198',
-    email: 'marcus.vance@infralabs.net',
+    title: 'Staff Backend & Platform Architect',
+    location: 'Zurich, Switzerland',
+    contact_phone: '+41-44-668-0198',
+    email: 'marcus.vance@infralabs.ch',
     skills: ['Python', 'FastAPI', 'Microservices', 'Docker', 'Kubernetes', 'AWS', 'SQL', 'System Design'],
     experience_years: 10,
     outreach_status: 'Ready for Reachout'
   },
   {
     candidate_id: 'cand_03',
+    name: 'Sarah Chen',
+    title: 'Principal Full-Stack Engineer',
+    location: 'Singapore / APAC',
+    contact_phone: '+65-6712-0142',
+    email: 'sarah.chen@techconnect.sg',
+    skills: ['TypeScript', 'Next.js', 'React', 'Python', 'FastAPI', 'Docker', 'PostgreSQL', 'Tailwind CSS'],
+    experience_years: 7,
+    outreach_status: 'Ready for Reachout'
+  },
+  {
+    candidate_id: 'cand_04',
+    name: 'Elena Weber',
+    title: 'Senior Cloud & DevOps Infrastructure Lead',
+    location: 'Munich, Bavaria, Germany',
+    contact_phone: '+49-89-2018-0129',
+    email: 'elena.weber@codenetwork.de',
+    skills: ['Docker', 'Kubernetes', 'Terraform', 'AWS', 'GCP', 'CI/CD', 'Linux', 'Python'],
+    experience_years: 6,
+    outreach_status: 'Ready for Reachout'
+  },
+  {
+    candidate_id: 'cand_05',
     name: 'Amina Al-Mansoor',
-    title: 'Voice AI & NLP Solutions Engineer',
-    location: 'Austin, TX',
-    contact_phone: '+1-512-555-0174',
-    email: 'amina.mansoor@speechpulse.ai',
+    title: 'Voice AI & Conversational NLP Engineer',
+    location: 'Dubai, UAE / London, UK',
+    contact_phone: '+44-20-7946-0174',
+    email: 'amina.mansoor@speechpulse.co.uk',
     skills: ['Voice AI', 'NLP', 'Python', 'FastAPI', 'REST APIs', 'Machine Learning', 'PyTorch'],
     experience_years: 5,
     outreach_status: 'Ready for Reachout'
   },
   {
-    candidate_id: 'cand_04',
-    name: 'David Ramirez',
-    title: 'Lead Frontend Platform Engineer',
-    location: 'Seattle, WA',
-    contact_phone: '+1-206-555-0131',
-    email: 'david.ramirez@devstack.org',
-    skills: ['React', 'Next.js', 'TypeScript', 'Tailwind CSS', 'Node.js', 'GraphQL', 'CI/CD'],
-    experience_years: 8,
-    outreach_status: 'Ready for Reachout'
-  },
-  {
-    candidate_id: 'cand_05',
-    name: 'Priya Sharma',
-    title: 'Distributed Systems Engineer',
-    location: 'Chicago, IL',
-    contact_phone: '+1-312-555-0165',
-    email: 'priya.sharma@cloudcore.dev',
-    skills: ['Python', 'Docker', 'Kafka', 'Redis', 'SQL', 'GCP', 'Linux', 'System Design'],
-    experience_years: 6,
-    outreach_status: 'Ready for Reachout'
-  },
-  {
     candidate_id: 'cand_06',
-    name: 'Elena Rostova',
-    title: 'Full-Stack Software Engineer',
-    location: 'Boston, MA',
-    contact_phone: '+1-617-555-0129',
-    email: 'elena.rostova@codenetwork.io',
-    skills: ['React', 'TypeScript', 'Python', 'PostgreSQL', 'Tailwind CSS', 'REST APIs'],
-    experience_years: 4,
+    name: 'Kenji Tanaka',
+    title: 'Senior Machine Learning Systems Engineer',
+    location: 'Tokyo, Japan',
+    contact_phone: '+81-3-5555-0131',
+    email: 'kenji.tanaka@devstack.jp',
+    skills: ['Python', 'PyTorch', 'Machine Learning', 'FastAPI', 'Docker', 'PostgreSQL', 'System Design'],
+    experience_years: 7,
     outreach_status: 'Ready for Reachout'
   },
   {
     candidate_id: 'cand_07',
-    name: 'Kwame Osei',
-    title: 'DevOps & Cloud Infrastructure Engineer',
-    location: 'Denver, CO',
-    contact_phone: '+1-303-555-0188',
-    email: 'kwame.osei@scalecloud.io',
-    skills: ['Docker', 'Kubernetes', 'AWS', 'Terraform', 'CI/CD', 'Linux', 'Python'],
-    experience_years: 6,
+    name: 'Aditya Varma',
+    title: 'Senior Full-Stack & Voice AI Engineer',
+    location: 'Hyderabad, Telangana, India',
+    contact_phone: '+91-98765-43210',
+    email: 'aditya.varma@voicegrid.in',
+    skills: ['React', 'Next.js', 'TypeScript', 'Python', 'FastAPI', 'REST APIs', 'Voice AI'],
+    experience_years: 5,
     outreach_status: 'Ready for Reachout'
   },
   {
     candidate_id: 'cand_08',
-    name: 'Jessica Taylor',
-    title: 'AI Product Engineer',
-    location: 'Remote / San Jose, CA',
-    contact_phone: '+1-408-555-0112',
-    email: 'jessica.taylor@synapseworks.com',
-    skills: ['Python', 'FastAPI', 'Voice AI', 'Next.js', 'TypeScript', 'REST APIs'],
-    experience_years: 5,
+    name: 'David Van Der Beek',
+    title: 'Lead Platform Reliability & Cloud Architect',
+    location: 'Amsterdam / Rotterdam, Netherlands',
+    contact_phone: '+31-20-798-0188',
+    email: 'david.beek@scalecloud.nl',
+    skills: ['Docker', 'Kubernetes', 'AWS', 'GCP', 'Terraform', 'CI/CD', 'Linux', 'Python'],
+    experience_years: 8,
     outreach_status: 'Ready for Reachout'
   }
 ];
 
-const REGIONS = [
-  'Pacific Northwest',
-  'Midwest Logistics',
-  'Southern Mining',
-  'Appalachian Energy',
-  'Southwest Construction',
-  'Northeast Distribution'
+const GLOBAL_REGIONS_CONFIG = [
+  { region: 'Bengaluru Industrial Corridor (India)', hub: 'Bengaluru Hub' },
+  { region: 'Singapore Maritime & Logistics (APAC)', hub: 'Jurong Port' },
+  { region: 'Munich Advanced IoT & Auto Plant (Germany)', hub: 'Bavaria Depot' },
+  { region: 'London & Midlands Distribution (UK)', hub: 'London Gateway' },
+  { region: 'Tokyo Precision Robotics Base (Japan)', hub: 'Tokyo Bay' },
+  { region: 'Hyderabad Biotech & Pharma Park (India)', hub: 'Genome Valley' },
+  { region: 'Rotterdam Port Automation (Netherlands)', hub: 'Europort' },
+  { region: 'Taipei Semiconductor Fab Station (Taiwan)', hub: 'Hsinchu Base' },
+  { region: 'Dubai MENA Logistics Center (UAE)', hub: 'Jebel Ali' },
+  { region: 'Stockholm Clean Energy Facility (Nordics)', hub: 'Kista Substation' }
 ];
+
+const REGIONS = GLOBAL_REGIONS_CONFIG.map((r) => r.region);
 
 interface SiteLocation {
   site_code: string;
@@ -817,8 +823,9 @@ interface SiteLocation {
 const siteLocations: SiteLocation[] = Array.from({ length: 100 }, (_, i) => {
   const index = i + 1;
   const site_code = `SITE-${String(index).padStart(3, '0')}`;
-  const region = REGIONS[(index - 1) % REGIONS.length];
-  const site_name = `Field Station ${String(index).padStart(3, '0')} (${region.split(' ')[0]})`;
+  const config = GLOBAL_REGIONS_CONFIG[(index - 1) % GLOBAL_REGIONS_CONFIG.length];
+  const region = config.region;
+  const site_name = `Field Station ${String(index).padStart(3, '0')} (${config.hub})`;
   const total_workers = 10;
   const checked_in_count = Math.min(10, 7 + (index % 4));
   const late_count = index % 5 === 0 ? 1 : (index % 11 === 0 ? 2 : 0);
@@ -860,58 +867,72 @@ const attendanceRecordsDb: AttendanceRecord[] = [
   {
     id: 1,
     employee_id: 'EMP-1042',
-    employee_name: 'Marcus Vance',
+    employee_name: 'Aarav Patel',
     site_code: 'SITE-014',
-    site_name: 'Field Station 014 (Midwest)',
+    site_name: 'Field Station 014 (London Gateway)',
     checkin_time: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
     status: 'On-Time',
     audio_site_code_verified: true,
     voiceprint_match: true,
-    voice_transcript: 'IVR: Please state your Employee ID. Worker: 1042. IVR: Voiceprint authenticated. Confirm your location and shift. Worker: Logging in at Station 14 for 07:00 AM Morning Shift. IVR: Verified. Have a safe shift.',
+    voice_transcript: 'IVR: Welcome to Global Voice Attendance Gateway. Please state your Employee ID. Worker: 1042. IVR: Voice biometric authenticated for Aarav Patel. Confirm your location and shift. Worker: Check-in at Station 014 London Gateway for 07:00 AM Morning Shift. IVR: Audio site beacon tone verified. Check-in recorded on-time. Safe shift.',
     anomaly_reason: null,
     call_duration_seconds: 42
   },
   {
     id: 2,
     employee_id: 'EMP-2089',
-    employee_name: 'Sarah Jenkins',
+    employee_name: 'Mei-Ling Chen',
     site_code: 'SITE-028',
-    site_name: 'Field Station 028 (Southern)',
+    site_name: 'Field Station 028 (Europort)',
     checkin_time: new Date(Date.now() - 75 * 60 * 1000).toISOString(),
     status: 'On-Time',
     audio_site_code_verified: true,
     voiceprint_match: true,
-    voice_transcript: 'IVR: State your badge number. Worker: 2089. IVR: Audio site beacon tone verified. State your current duty. Worker: Shift start 07:00 AM at Station 28 warehouse. IVR: Check-in logged successfully.',
+    voice_transcript: 'IVR: State your badge number. Worker: 2089. IVR: Voice biometric verified for Mei-Ling Chen. Audio beacon tone confirmed for Europort Station 028. Confirm duty. Worker: Shift start 07:00 AM at Terminal 3 Container Operations. IVR: Check-in logged successfully.',
     anomaly_reason: null,
     call_duration_seconds: 38
   },
   {
     id: 3,
     employee_id: 'EMP-3104',
-    employee_name: 'Carlos Mendez',
+    employee_name: 'Hans Gruber',
     site_code: 'SITE-042',
-    site_name: 'Field Station 042 (Appalachian)',
+    site_name: 'Field Station 042 (Bavaria Depot)',
     checkin_time: new Date(Date.now() - 95 * 60 * 1000).toISOString(),
     status: 'Late',
     audio_site_code_verified: true,
     voiceprint_match: true,
-    voice_transcript: 'IVR: State Employee ID. Worker: 3104. IVR: Voiceprint matches Carlos Mendez. Inbound timestamp 07:28 AM exceeds 07:00 threshold. State reason. Worker: Crew transport delayed due to gravel road obstruction. IVR: Logged as Late (Transport Delay).',
-    anomaly_reason: 'Arrived 28 min past shift start',
+    voice_transcript: 'IVR: State Employee ID. Worker: 3104. IVR: Voiceprint matches Hans Gruber. Inbound timestamp 07:28 AM exceeds 07:00 threshold. State reason. Worker: Autobahn B12 logistics transport delay due to weather. IVR: Logged as Late (Logistics Transport Delay).',
+    anomaly_reason: 'Arrived 28 min past shift start (Transport Delay)',
     call_duration_seconds: 56
   },
   {
     id: 4,
     employee_id: 'EMP-4491',
-    employee_name: 'David Kross',
+    employee_name: 'Liam O\'Connor',
     site_code: 'SITE-014',
-    site_name: 'Field Station 014 (Midwest)',
+    site_name: 'Field Station 014 (London Gateway)',
     checkin_time: new Date(Date.now() - 110 * 60 * 1000).toISOString(),
     status: 'Flagged Anomaly',
     audio_site_code_verified: false,
     voiceprint_match: true,
-    voice_transcript: 'IVR: State Employee ID. Worker: 4491. IVR: Warning: Landline caller ID originates from Area 408 (Substation B), but verbal check-in claimed Site 014 (Central depot). IVR: Discrepancy logged for supervisor review.',
-    anomaly_reason: 'Location Telephony Discrepancy (Area 408 vs Site 014)',
+    voice_transcript: 'IVR: State Employee ID. Worker: 4491. IVR: Warning: Landline caller ID originates from Area +44 121 (Birmingham Substation), but verbal check-in claimed Site 014 (London Gateway). IVR: Discrepancy logged for supervisor review.',
+    anomaly_reason: 'Location Telephony Discrepancy (+44-121 Birmingham vs Site 014 London)',
     call_duration_seconds: 48
+  },
+  {
+    id: 5,
+    employee_id: 'EMP-5512',
+    employee_name: 'Priya Nair',
+    site_code: 'SITE-075',
+    site_name: 'Field Station 075 (Genome Valley)',
+    checkin_time: new Date(Date.now() - 130 * 60 * 1000).toISOString(),
+    status: 'On-Time',
+    audio_site_code_verified: true,
+    voiceprint_match: true,
+    voice_transcript: 'IVR: State Employee ID. Worker: 5512. IVR: Voice biometric verified for Priya Nair. Worker: Logging in at Station 075 Hyderabad Genome Valley for cleanroom manufacturing shift. IVR: Verified. Have a safe shift.',
+    anomaly_reason: null,
+    call_duration_seconds: 40
   }
 ];
 
@@ -2132,7 +2153,121 @@ async function startServer() {
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Enterprise Voice AI Platform running on http://0.0.0.0:${PORT} [mode: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}]`);
+    // Restore real candidate calls from Hunar cloud on startup
+    syncHunarCallsOnStartup();
   });
+}
+
+async function syncHunarCallsOnStartup(): Promise<void> {
+  if (!HUNAR_API_KEY) return;
+  try {
+    console.log('[HUNAR STARTUP SYNC] Fetching real candidate calls from Hunar API...');
+    let page = 1;
+    let synced = 0;
+    const existingIds = new Set(callsDb.map((c) => c.call_id));
+
+    while (page <= 10) {
+      const url = `${HUNAR_BASE_URL}/external/v1/calls/?page=${page}`;
+      const res = await fetchWithRetry(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': HUNAR_API_KEY,
+          'User-Agent': 'Hunar-Voice-Agents/1.0'
+        }
+      }, 1, 8000);
+
+      if (!res || !res.ok) break;
+      const data = (await res.json()) as any;
+      const results = Array.isArray(data.results) ? data.results : [];
+      if (results.length === 0) break;
+
+      for (const callData of results) {
+        const callId = callData.id;
+        const agentId = callData.agent_id;
+        const calleeName = callData.callee_name || 'Candidate';
+        const phone = callData.mobile_number || '';
+        const statusRaw = String(callData.status || '').toUpperCase();
+        const duration = Number(callData.duration_seconds || 0);
+        const result = callData.result || {};
+        const customData = callData.custom_data || {};
+        const recordingUrl = callData.recording_url || '';
+
+        if (agentId !== HUNAR_SCREENING_AGENT_ID) continue;
+        if (!calleeName || ['test cand', 'test candidate', 'mia anderson'].includes(calleeName.toLowerCase())) continue;
+        if (existingIds.has(callId)) continue;
+
+        let status: CallRecord['status'] = 'Initiated';
+        if (statusRaw === 'COMPLETED') status = 'Completed';
+        else if (['NOT_CONNECTED', 'FAILED', 'CANCELLED'].includes(statusRaw)) status = 'Failed';
+        else if (['IN_PROGRESS', 'RINGING'].includes(statusRaw)) status = 'In Progress';
+
+        const position = customData.job_role || 'AI/ML Candidate';
+        const customPrompt = customData.job_description || null;
+        
+        let overallScore = 42.0;
+        let interestScore = 20.0;
+        let disposition: CallRecord['disposition'] = 'Not Interested';
+
+        const q = result.qualified;
+        const i = result.interested;
+        if (q === true || String(q).toLowerCase() === 'true' || String(q) === '1') {
+          overallScore = 88.0;
+        }
+        if (i === true || String(i).toLowerCase() === 'true' || String(i) === '1') {
+          interestScore = 85.0;
+          disposition = 'Interested';
+        }
+        if (status === 'Failed') disposition = 'Failed';
+
+        const summaryParts: string[] = [];
+        if (result.reason) summaryParts.push(result.reason);
+        if (result.relevant_skills && result.relevant_skills !== 'NOT AVAILABLE') {
+          summaryParts.push(`Skills: ${result.relevant_skills}.`);
+        }
+        if (result.years_experience && result.years_experience !== 'NOT AVAILABLE') {
+          summaryParts.push(`Experience: ${result.years_experience} year(s).`);
+        }
+        if (result.notice_period && result.notice_period !== 'NOT AVAILABLE') {
+          summaryParts.push(`Notice: ${result.notice_period}.`);
+        }
+        if (result.expected_salary && result.expected_salary !== 'NOT AVAILABLE') {
+          summaryParts.push(`Salary: ${result.expected_salary}.`);
+        }
+        const answersSummary = summaryParts.length > 0 ? summaryParts.join(' ') : `Screening completed for ${calleeName} (${position}).`;
+
+        callCounter += 1;
+        const newRecord: CallRecord = {
+          id: callCounter,
+          call_id: callId,
+          candidate_name: calleeName,
+          phone_number: phone,
+          position,
+          custom_prompt: customPrompt,
+          status,
+          duration_seconds: duration,
+          transcript: `Agent: Hello ${calleeName}, this is Hunar AI calling regarding the ${position} position.\n\nCandidate: [Screening answered — ${duration}s duration]\n\n${answersSummary}`,
+          audio_recording_url: recordingUrl || null,
+          overall_score: overallScore,
+          interest_score: interestScore,
+          answers_summary: answersSummary,
+          disposition,
+          created_at: callData.created_at || new Date().toISOString()
+        };
+
+        callsDb.unshift(newRecord);
+        existingIds.add(callId);
+        synced++;
+      }
+
+      if (!data.next) break;
+      page++;
+    }
+
+    console.log(`[HUNAR STARTUP SYNC] Successfully restored ${synced} real call(s) from Hunar API into live feed.`);
+  } catch (err: any) {
+    console.warn(`[HUNAR STARTUP SYNC] Non-fatal startup sync warning: ${err?.message}`);
+  }
 }
 
 startServer();

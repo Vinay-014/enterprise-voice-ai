@@ -25,19 +25,38 @@ except ImportError:
 
 router = APIRouter(prefix="/api/v1/attendance", tags=["Smartphone-Free Attendance System"])
 
-REGIONS = ["Pacific Northwest", "Midwest Logistics", "Southern Mining", "Appalachian Energy", "Southwest Construction", "Northeast Distribution"]
+GLOBAL_REGIONS_CONFIG = [
+    {"region": "Bengaluru Industrial Corridor (India)", "hub": "Bengaluru Hub", "base_lat": 12.9716, "base_lon": 77.5946},
+    {"region": "Singapore Maritime & Logistics (APAC)", "hub": "Jurong Port", "base_lat": 1.3521, "base_lon": 103.8198},
+    {"region": "Munich Advanced IoT & Auto Plant (Germany)", "hub": "Bavaria Depot", "base_lat": 48.1351, "base_lon": 11.5820},
+    {"region": "London & Midlands Distribution (UK)", "hub": "London Gateway", "base_lat": 51.5074, "base_lon": -0.1278},
+    {"region": "Tokyo Precision Robotics Base (Japan)", "hub": "Tokyo Bay", "base_lat": 35.6762, "base_lon": 139.6503},
+    {"region": "Hyderabad Biotech & Pharma Park (India)", "hub": "Genome Valley", "base_lat": 17.3850, "base_lon": 78.4867},
+    {"region": "Rotterdam Port Automation (Netherlands)", "hub": "Europort", "base_lat": 51.9244, "base_lon": 4.4777},
+    {"region": "Taipei Semiconductor Fab Station (Taiwan)", "hub": "Hsinchu Base", "base_lat": 24.8138, "base_lon": 120.9675},
+    {"region": "Dubai MENA Logistics Center (UAE)", "hub": "Jebel Ali", "base_lat": 25.2048, "base_lon": 55.2708},
+    {"region": "Stockholm Clean Energy Facility (Nordics)", "hub": "Kista Substation", "base_lat": 59.3293, "base_lon": 18.0686},
+]
+
+REGIONS = [r["region"] for r in GLOBAL_REGIONS_CONFIG]
 
 def seed_sites_if_empty(db: Session):
     if db.query(SiteLocation).count() == 0:
         sites_data = []
         for i in range(1, 101):
             code = f"SITE-{i:03d}"
-            region = REGIONS[(i - 1) % len(REGIONS)]
-            name = f"Field Station {i:03d} ({region.split()[0]})"
+            config = GLOBAL_REGIONS_CONFIG[(i - 1) % len(GLOBAL_REGIONS_CONFIG)]
+            region = config["region"]
+            hub_name = config["hub"]
+            name = f"Field Station {i:03d} ({hub_name})"
             total = 10  # 10 workers per site = 1,000 total workers across 100 sites
             checked = random.randint(7, 10)
             late = random.randint(0, 2)
             anom = 1 if (i % 17 == 0) else 0
+            
+            # Realistic geographic dispersion around regional base coordinates
+            lat = round(config["base_lat"] + ((i % 7) - 3) * 0.08, 4)
+            lon = round(config["base_lon"] + ((i % 5) - 2) * 0.09, 4)
             
             site = SiteLocation(
                 site_code=code,
@@ -47,20 +66,21 @@ def seed_sites_if_empty(db: Session):
                 checked_in_count=checked,
                 late_count=late,
                 anomalies_count=anom,
-                latitude=32.0 + (i * 0.15) % 15.0,
-                longitude=-118.0 + (i * 0.45) % 45.0
+                latitude=lat,
+                longitude=lon
             )
             sites_data.append(site)
         db.add_all(sites_data)
         db.commit()
 
-        # Seed initial voice check-in audit trails
+        # Seed initial voice check-in audit trails with multinational workforce
         sample_transcripts = [
-            ("EMP-1042", "Marcus Vance", "SITE-014", "Field Station 014", "On-Time", True, True, "IVR: Please state your Employee ID. Worker: 1042. IVR: Voiceprint authenticated. Confirm your location and shift. Worker: Logging in at Station 14 for 07:00 AM Morning Shift. IVR: Verified. Have a safe shift.", None),
-            ("EMP-2089", "Sarah Jenkins", "SITE-028", "Field Station 028", "On-Time", True, True, "IVR: State your badge number. Worker: 2089. IVR: Audio site beacon tone verified. State your current duty. Worker: Shift start 07:00 AM at Station 28 warehouse. IVR: Check-in logged successfully.", None),
-            ("EMP-3104", "Carlos Mendez", "SITE-042", "Field Station 042", "Late", True, True, "IVR: State Employee ID. Worker: 3104. IVR: Voiceprint matches Carlos Mendez. Inbound timestamp 07:28 AM exceeds 07:00 threshold. State reason. Worker: Crew transport delayed due to gravel road obstruction. IVR: Logged as Late (Transport Delay).", "Arrived 28 min past shift start"),
-            ("EMP-4491", "David Kross", "SITE-014", "Field Station 014", "Flagged Anomaly", True, False, "IVR: State Employee ID. Worker: 4491. IVR: Warning: Landline caller ID originates from Area 408 (Substation B), but verbal check-in claimed Site 014 (Central depot). IVR: Discrepancy logged for supervisor review.", "Location Telephony Discrepancy (Area 408 vs Site 014)"),
-            ("EMP-5512", "Fatima Zahra", "SITE-075", "Field Station 075", "On-Time", True, True, "IVR: State Employee ID. Worker: 5512. IVR: Voice biometric verified. Worker: Fatima Zahra, Station 75 safety inspection shift. IVR: Verified.", None),
+            ("EMP-1042", "Aarav Patel", "SITE-014", "Field Station 014 (London Gateway)", "On-Time", True, True, "IVR: Welcome to Global Voice Attendance Gateway. Please state your Employee ID. Worker: 1042. IVR: Voice biometric authenticated for Aarav Patel. Confirm your location and shift. Worker: Check-in at Station 014 London Gateway for 07:00 AM Morning Shift. IVR: Audio site beacon tone verified. Check-in recorded on-time. Safe shift.", None),
+            ("EMP-2089", "Mei-Ling Chen", "SITE-028", "Field Station 028 (Europort)", "On-Time", True, True, "IVR: State your badge number. Worker: 2089. IVR: Voice biometric verified for Mei-Ling Chen. Audio beacon tone confirmed for Europort Station 028. Confirm duty. Worker: Shift start 07:00 AM at Terminal 3 Container Operations. IVR: Check-in logged successfully.", None),
+            ("EMP-3104", "Hans Gruber", "SITE-042", "Field Station 042 (Bavaria Depot)", "Late", True, True, "IVR: State Employee ID. Worker: 3104. IVR: Voiceprint matches Hans Gruber. Inbound timestamp 07:28 AM exceeds 07:00 threshold. State reason. Worker: Autobahn B12 logistics transport delay due to weather. IVR: Logged as Late (Logistics Transport Delay).", "Arrived 28 min past shift start (Transport Delay)"),
+            ("EMP-4491", "Liam O'Connor", "SITE-014", "Field Station 014 (London Gateway)", "Flagged Anomaly", True, False, "IVR: State Employee ID. Worker: 4491. IVR: Warning: Landline caller ID originates from Area +44 121 (Birmingham Substation), but verbal check-in claimed Site 014 (London Gateway). IVR: Discrepancy logged for supervisor review.", "Location Telephony Discrepancy (+44-121 Birmingham vs Site 014 London)"),
+            ("EMP-5512", "Priya Nair", "SITE-075", "Field Station 075 (Genome Valley)", "On-Time", True, True, "IVR: State Employee ID. Worker: 5512. IVR: Voice biometric verified for Priya Nair. Worker: Logging in at Station 075 Hyderabad Genome Valley for cleanroom manufacturing shift. IVR: Verified. Have a safe shift.", None),
+            ("EMP-6238", "Kenji Takahashi", "SITE-056", "Field Station 056 (Genome Valley)", "On-Time", True, True, "IVR: State badge number. Worker: 6238. IVR: Voice biometric verified for Kenji Takahashi. Audio beacon verified for Robotics Assembly Station 056. Worker: Shift start confirmed. IVR: Verified.", None),
         ]
 
         for emp_id, name, s_code, s_name, status, vp, sc_v, trans, anom_msg in sample_transcripts:

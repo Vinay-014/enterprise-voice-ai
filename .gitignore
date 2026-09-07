@@ -7,5 +7,10 @@ coverage/
 .env*
 !.env.example
 *.db
+*.db-journal
 __pycache__/
+**/__pycache__/
+*.pyc
+*.tsbuildinfo
+.next/
 .pytest_cache/

@@ -232,7 +232,7 @@ export const HiringAssistant: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <button
-            onClick={fetchCalls}
+            onClick={() => fetchCalls(false)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white transition-all shadow-sm"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoadingCalls ? 'animate-spin text-amber-400' : ''}`} />
@@ -388,18 +388,37 @@ export const HiringAssistant: React.FC = () => {
               onClick={() =>
                 handleQuickFill(
                   'Maya Lin',
-                  '+1-415-555-0814',
-                  'Staff Python Backend Architect',
+                  '+65-6712-4890',
+                  'Staff Python Backend Architect (Singapore/APAC)',
                   'Evaluate async FastAPI, SQLAlchemy 2.0 connection pooling, database deadlocks mitigation, and Kafka event pipelines.'
                 )
               }
               className="w-full text-left p-3 rounded-lg border border-white/10 bg-black/30 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all text-xs group"
             >
               <div className="font-semibold text-white group-hover:text-amber-400 flex items-center justify-between">
-                <span>Maya Lin</span>
+                <span>Maya Lin (Singapore)</span>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
               </div>
-              <div className="text-slate-400 mt-0.5">Staff Python Backend Architect</div>
+              <div className="text-slate-400 mt-0.5">Staff Python Backend Architect • +65</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                handleQuickFill(
+                  'Aarav Sharma',
+                  '+91-98450-12345',
+                  'Lead AI/ML Platform Engineer (Bengaluru)',
+                  'Assess high-scale model serving with Docker, FastAPI, Python, scikit-learn/XGBoost, and low-latency feature stores.'
+                )
+              }
+              className="w-full text-left p-3 rounded-lg border border-white/10 bg-black/30 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all text-xs group"
+            >
+              <div className="font-semibold text-white group-hover:text-amber-400 flex items-center justify-between">
+                <span>Aarav Sharma (Bengaluru)</span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
+              </div>
+              <div className="text-slate-400 mt-0.5">Lead AI/ML Platform Engineer • +91</div>
             </button>
 
             <button
@@ -407,18 +426,18 @@ export const HiringAssistant: React.FC = () => {
               onClick={() =>
                 handleQuickFill(
                   'Tariq Hameed',
-                  '+1-512-555-0329',
-                  'Senior Cloud Platform Engineer',
+                  '+44-20-7946-0329',
+                  'Senior Cloud Platform Engineer (London)',
                   'Assess multi-tenant Kubernetes architecture, Terraform infrastructure as code, and zero-trust VPC networking.'
                 )
               }
               className="w-full text-left p-3 rounded-lg border border-white/10 bg-black/30 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all text-xs group"
             >
               <div className="font-semibold text-white group-hover:text-amber-400 flex items-center justify-between">
-                <span>Tariq Hameed</span>
+                <span>Tariq Hameed (London)</span>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
               </div>
-              <div className="text-slate-400 mt-0.5">Senior Cloud Platform Engineer</div>
+              <div className="text-slate-400 mt-0.5">Senior Cloud Platform Engineer • +44</div>
             </button>
 
             <button
@@ -426,18 +445,18 @@ export const HiringAssistant: React.FC = () => {
               onClick={() =>
                 handleQuickFill(
                   'Claire Dubois',
-                  '+1-212-555-0955',
-                  'Voice AI Telephony Specialist',
+                  '+33-1-4268-5500',
+                  'Voice AI Telephony Specialist (Paris/Zurich)',
                   'Probe WebRTC protocols, audio transcoding latency, Hunar Voice API integration patterns, and telephony webhook handling.'
                 )
               }
               className="w-full text-left p-3 rounded-lg border border-white/10 bg-black/30 hover:border-amber-500/50 hover:bg-amber-500/5 transition-all text-xs group"
             >
               <div className="font-semibold text-white group-hover:text-amber-400 flex items-center justify-between">
-                <span>Claire Dubois</span>
+                <span>Claire Dubois (Paris)</span>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all" />
               </div>
-              <div className="text-slate-400 mt-0.5">Voice AI Telephony Specialist</div>
+              <div className="text-slate-400 mt-0.5">Voice AI Telephony Specialist • +33</div>
             </button>
           </div>
         </div>
