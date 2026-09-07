@@ -14,7 +14,7 @@ A carrier-grade, multimodal enterprise voice automation suite. The platform unif
 
 ---
 
-## 📑 Table of Contents
+##  Table of Contents
 
 - [Executive Summary](#-executive-summary)
 - [System Architecture & Design](#️-system-architecture--design)
@@ -31,7 +31,7 @@ A carrier-grade, multimodal enterprise voice automation suite. The platform unif
 
 ---
 
-## 🎯 Executive Summary
+##  Executive Summary
 
 Enterprise voice operations require strict reliability, zero-leak telemetry, and deterministic evaluation guarantees. This platform provides an end-to-end solution for high-volume enterprise telephony workloads across three mission-critical verticals:
 
@@ -41,7 +41,7 @@ Enterprise voice operations require strict reliability, zero-leak telemetry, and
 
 ---
 
-## 🏛️ System Architecture & Design
+##  System Architecture & Design
 
 ```mermaid
 flowchart TD
@@ -108,7 +108,7 @@ stateDiagram-v2
 
 ---
 
-## 📦 Core Platform Modules
+##  Core Platform Modules
 
 ### Module 1: Autonomous AI Hiring Assistant
 - **Carrier Dispatch & Tracking:** Dispatches autonomous outbound screening calls via the Hunar Voice API with dynamic candidate prompts and custom persona parameters.
@@ -134,7 +134,7 @@ stateDiagram-v2
 
 ---
 
-## 🛡️ Resilience & Circuit-Breaker Architecture
+##  Resilience & Circuit-Breaker Architecture
 
 | Layer | Resiliency Mechanism | Technical Implementation |
 |---|---|---|
@@ -300,7 +300,7 @@ Processes an inbound IVR attendance check-in session.
 
 ---
 
-## ⚡ Dual-Runtime Support
+##  Dual-Runtime Support
 
 This platform supports two production-ready backend implementations:
 
