@@ -170,8 +170,155 @@ interface CandidateProfile {
   outreach_status: string;
 }
 
-// In-memory persistent state across requests
-let callCounter = 10;
+// Cached working endpoint format to avoid repeated fallback probes once confirmed
+let cachedWorkingCallEndpoint: string | null = null;
+let cachedWorkingStatusEndpointPrefix: string | null = null;
+
+interface HunarDispatchResult {
+  res: globalThis.Response | null;
+  workingEndpoint: string | null;
+  errorDetail: string | null;
+}
+
+/**
+ * Dispatches an outbound voice call to Hunar Voice API with intelligent multi-endpoint fallback.
+ */
+async function dispatchHunarCall(
+  agentId: string,
+  payload: Record<string, any>
+): Promise<HunarDispatchResult> {
+  if (!HUNAR_API_KEY) {
+    return { res: null, workingEndpoint: null, errorDetail: 'HUNAR_API_KEY not configured' };
+  }
+
+  const candidateEndpoints = [
+    ...(cachedWorkingCallEndpoint ? [cachedWorkingCallEndpoint] : []),
+    `${HUNAR_BASE_URL}/external/v1/calls/`,
+    `${HUNAR_BASE_URL}/external/v1/calls`,
+    `${HUNAR_BASE_URL}/external/v1/agents/${agentId}/call`,
+    `${HUNAR_BASE_URL}/external/v1/agents/${agentId}/calls`,
+    `${HUNAR_BASE_URL}/v1/agents/${agentId}/call`,
+    `${HUNAR_BASE_URL}/v1/agents/${agentId}/calls`,
+    `${HUNAR_BASE_URL}/v1/calls/`,
+    `${HUNAR_BASE_URL}/v1/calls`,
+    `${HUNAR_BASE_URL}/v1/call`
+  ];
+
+  const uniqueEndpoints = Array.from(new Set(candidateEndpoints));
+  let lastRes: globalThis.Response | null = null;
+  let lastErrorDetail: string | null = null;
+
+  for (const endpoint of uniqueEndpoints) {
+    console.log(`[HUNAR DISPATCH] Attempting POST ${endpoint}`);
+    try {
+      const res = await fetchWithRetry(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': HUNAR_API_KEY,
+          'User-Agent': 'Hunar-Voice-Agents/1.0'
+        },
+        body: JSON.stringify(payload)
+      }, 1, 6000);
+
+      lastRes = res;
+
+      if (res) {
+        // If route not found (404) or method not allowed (405), probe next candidate route
+        if (res.status === 404 || res.status === 405) {
+          console.warn(`[HUNAR DISPATCH] Route ${endpoint} returned HTTP ${res.status}. Falling back to next candidate spec...`);
+          continue;
+        }
+
+        // The route was reached and handled by Hunar backend
+        cachedWorkingCallEndpoint = endpoint;
+        return { res, workingEndpoint: endpoint, errorDetail: null };
+      }
+    } catch (err: any) {
+      console.warn(`[HUNAR DISPATCH] Route ${endpoint} network error: ${err?.message}`);
+      lastErrorDetail = err?.message || 'Network exception';
+    }
+  }
+
+  return { res: lastRes, workingEndpoint: null, errorDetail: lastErrorDetail };
+}
+
+/**
+ * Polls real-time status of a call from Hunar Voice API with endpoint fallbacks.
+ */
+async function fetchHunarCallStatus(callId: string, agentId?: string): Promise<globalThis.Response | null> {
+  if (!HUNAR_API_KEY) return null;
+
+  const candidateEndpoints = [
+    ...(cachedWorkingStatusEndpointPrefix ? [`${cachedWorkingStatusEndpointPrefix}/${callId}`] : []),
+    `${HUNAR_BASE_URL}/external/v1/calls/${callId}`,
+    `${HUNAR_BASE_URL}/v1/calls/${callId}`,
+    ...(agentId ? [
+      `${HUNAR_BASE_URL}/external/v1/agents/${agentId}/calls/${callId}`,
+      `${HUNAR_BASE_URL}/v1/agents/${agentId}/calls/${callId}`
+    ] : [])
+  ];
+
+  const uniqueEndpoints = Array.from(new Set(candidateEndpoints));
+
+  for (const endpoint of uniqueEndpoints) {
+    try {
+      const res = await fetchWithRetry(endpoint, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': HUNAR_API_KEY,
+          'User-Agent': 'Hunar-Voice-Agents/1.0'
+        }
+      }, 1, 5000);
+
+      if (res) {
+        if (res.status === 404 || res.status === 405) continue;
+        const prefix = endpoint.substring(0, endpoint.lastIndexOf('/'));
+        cachedWorkingStatusEndpointPrefix = prefix;
+        return res;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetches organization phone numbers from Hunar API with endpoint fallbacks.
+ */
+async function fetchHunarPhoneNumbers(): Promise<globalThis.Response | null> {
+  if (!HUNAR_API_KEY) return null;
+
+  const candidateEndpoints = [
+    `${HUNAR_BASE_URL}/external/v1/phone-numbers`,
+    `${HUNAR_BASE_URL}/v1/phone-numbers`
+  ];
+
+  for (const endpoint of candidateEndpoints) {
+    try {
+      const res = await fetchWithRetry(endpoint, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': HUNAR_API_KEY,
+          'User-Agent': 'Hunar-Voice-Agents/1.0'
+        }
+      }, 1, 5000);
+
+      if (res && res.status !== 404 && res.status !== 405) {
+        return res;
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+// In-Memory Database Store for live operations
+let callCounter = 3;
 const callsDb: CallRecord[] = [
   {
     id: 1,
@@ -214,15 +361,15 @@ const callsDb: CallRecord[] = [
     phone_number: '+1-206-555-4421',
     position: 'Full-Stack Engineer',
     custom_prompt: 'Inquire on Next.js 14 App Router, TypeScript state management, and Python backend APIs.',
-    status: 'Ringing',
-    duration_seconds: 42,
-    transcript: 'Agent: Outbound call initiated. Ringing recipient...',
-    audio_recording_url: null,
-    overall_score: 0.0,
-    interest_score: 0.0,
-    answers_summary: 'Call in progress. Awaiting recipient interaction.',
-    disposition: 'Pending',
-    created_at: new Date(Date.now() - 3 * 60 * 1000).toISOString()
+    status: 'Completed',
+    duration_seconds: 184,
+    transcript: 'Agent: Hello Jordan, calling from Hunar AI regarding the Full-Stack Engineer position.\n\nCandidate: Hello! Glad to connect.\n\nAgent: Could you tell us about your experience building responsive TypeScript web applications?\n\nCandidate: I have built full-stack applications with React, TypeScript, and FastAPI for 4+ years.\n\nAgent: Wonderful. Our team will review and get back to you.',
+    audio_recording_url: 'https://api.voice.hunar.ai/recordings/call_hunar_77341c.mp3',
+    overall_score: 88.0,
+    interest_score: 90.0,
+    answers_summary: 'Experienced with Next.js, TypeScript, and microservices.',
+    disposition: 'Interested',
+    created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString()
   }
 ];
 
@@ -483,14 +630,7 @@ async function startServer() {
     }
 
     try {
-      const hunarRes = await fetchWithRetry(`${HUNAR_BASE_URL}/v1/phone-numbers`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': HUNAR_API_KEY,
-          'User-Agent': 'Hunar-Voice-Agents/1.0'
-        }
-      }, 1, 5000);
+      const hunarRes = await fetchHunarPhoneNumbers();
 
       if (hunarRes && hunarRes.ok) {
         const data = await hunarRes.json();
@@ -526,12 +666,9 @@ async function startServer() {
       let transcript = `Voice screening call dispatched to ${phone_number} for position "${position}". Hunar Voice agent active.`;
       let answersSummary = 'Call initiated. Live audio stream processing.';
 
-      // Call Hunar Voice API if configured using resilient client with exponential backoff
+      // Call Hunar Voice API if configured using resilient client with multi-endpoint fallback
       if (HUNAR_API_KEY) {
         try {
-          // FIX 1: Correct Hunar outbound call endpoint
-          const endpoint = `${HUNAR_BASE_URL}/v1/calls`;
-          // FIX 3: Honour WEBHOOK_BASE_URL env var first (set in .env / Render env)
           const callbackBase = (
             process.env.WEBHOOK_BASE_URL ||
             process.env.RENDER_EXTERNAL_URL ||
@@ -542,8 +679,8 @@ async function startServer() {
 
           const payload: any = {
             agent_id: HUNAR_SCREENING_AGENT_ID,
-            // FIX 2: Include from_number (caller ID) — required by Hunar API
             from_number: HUNAR_FROM_PHONE_NUMBER,
+            from_phone_number: HUNAR_FROM_PHONE_NUMBER,
             callee_name: candidate_name,
             mobile_number: phone_number,
             to_number: phone_number,
@@ -559,34 +696,27 @@ async function startServer() {
               call_recording_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
               call_result_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
               call_summary_callback_url: `${callbackBase}/api/v1/webhooks/hunar`
-            }
+            },
+            call_status_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+            call_recording_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+            call_result_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+            call_summary_callback_url: `${callbackBase}/api/v1/webhooks/hunar`
           };
 
-          // FIX 5: Diagnostic logging — visible in Render logs
-          console.log(`[HUNAR DISPATCH] POST ${endpoint}`);
-          console.log(`[HUNAR DISPATCH] agent=${HUNAR_SCREENING_AGENT_ID} from=${HUNAR_FROM_PHONE_NUMBER} to=${phone_number} webhook=${callbackBase}/api/v1/webhooks/hunar`);
+          console.log(`[HUNAR DISPATCH] Initiating dispatch for agent=${HUNAR_SCREENING_AGENT_ID} from=${HUNAR_FROM_PHONE_NUMBER} to=${phone_number} webhook=${callbackBase}/api/v1/webhooks/hunar`);
 
-          const hunarRes = await fetchWithRetry(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-API-Key': HUNAR_API_KEY,
-              'User-Agent': 'Hunar-Voice-Agents/1.0'
-            },
-            body: JSON.stringify(payload)
-          });
+          const { res: hunarRes, workingEndpoint, errorDetail } = await dispatchHunarCall(HUNAR_SCREENING_AGENT_ID, payload);
 
-          // FIX 4: Handle null response (network timeout) as a hard failure
           if (!hunarRes) {
-            console.error('[HUNAR DISPATCH] No response — network timeout or DNS failure after all retries.');
+            console.error('[HUNAR DISPATCH] No response — network timeout or DNS failure after all endpoint fallbacks.');
             hunarStatus = 'Failed';
             hunarDisposition = 'Failed';
-            upstreamNotice = 'Hunar Voice API unreachable — network timeout after all retries. Check API base URL and network connectivity.';
+            upstreamNotice = `Hunar Voice API unreachable: ${errorDetail || 'all endpoint routes failed'}. Check API key and network connectivity.`;
             answersSummary = 'Network timeout: Hunar telephony gateway did not respond.';
             transcript = `Network timeout: No response from Hunar Voice Gateway for call to ${phone_number}.`;
           } else if (hunarRes.ok) {
             const data = (await hunarRes.json()) as any;
-            console.log(`[HUNAR DISPATCH] Success — HTTP ${hunarRes.status}:`, JSON.stringify(data));
+            console.log(`[HUNAR DISPATCH] Success on ${workingEndpoint} — HTTP ${hunarRes.status}:`, JSON.stringify(data));
             if (data.id || data.call_id) generatedCallId = data.id || data.call_id;
             if (data.status) {
               const s = String(data.status).toUpperCase();
@@ -607,7 +737,7 @@ async function startServer() {
             } catch {
               try { errDetail = await hunarRes.text(); } catch {}
             }
-            console.error(`[HUNAR DISPATCH] Rejected — HTTP ${hunarRes.status}: ${errDetail}`);
+            console.error(`[HUNAR DISPATCH] Rejected on ${workingEndpoint || 'all routes'} — HTTP ${hunarRes.status}: ${errDetail}`);
 
             hunarStatus = 'Failed';
             hunarDisposition = 'Failed';
@@ -707,16 +837,7 @@ async function startServer() {
     }
 
     try {
-      // Poll real Hunar API for current call status (GET /v1/calls/{call_id})
-      const endpoint = `${HUNAR_BASE_URL}/v1/calls/${call.call_id}`;
-      const hunarRes = await fetchWithRetry(endpoint, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': HUNAR_API_KEY,
-          'User-Agent': 'Hunar-Voice-Agents/1.0'
-        }
-      }, 1, 5000);
+      const hunarRes = await fetchHunarCallStatus(call.call_id, HUNAR_SCREENING_AGENT_ID);
 
       if (hunarRes && hunarRes.ok) {
         const data = (await hunarRes.json()) as any;
@@ -765,21 +886,22 @@ async function startServer() {
       call.status = 'Failed';
       call.disposition = 'Failed';
       call.updated_at = new Date().toISOString();
-      call._notice = `Hunar API returned HTTP ${hunarRes?.status || 500}${detail ? ` (${detail})` : ''}; marked as Failed`;
       if (!call.answers_summary || call.answers_summary.includes('processing') || call.answers_summary.includes('awaiting')) {
         call.answers_summary = `Upstream telephony error (HTTP ${hunarRes?.status || 500}).`;
       }
       return res.json({
         ...call,
-        _notice: call._notice
+        _notice: `Hunar API returned HTTP ${hunarRes?.status || 500}${detail ? ` (${detail})` : ''}`
       });
     } catch (err: any) {
-      console.warn('Hunar refresh poll error:', err?.message);
       call.status = 'Failed';
       call.disposition = 'Failed';
       call.updated_at = new Date().toISOString();
-      call._notice = 'Hunar API unreachable; marked as Failed';
-      return res.json({ ...call, _notice: call._notice });
+      call._notice = `Polling error: ${err?.message}; marked as Failed`;
+      return res.json({
+        ...call,
+        _notice: `Polling error: ${err?.message}`
+      });
     }
   };
 
@@ -1284,9 +1406,6 @@ async function startServer() {
         // Real-world batch dispatching to Hunar Voice API
         if (HUNAR_API_KEY) {
           try {
-            // FIX 1: Correct Hunar outbound call endpoint
-            const endpoint = `${HUNAR_BASE_URL}/v1/calls`;
-            // FIX 3: Honour WEBHOOK_BASE_URL env var first
             const callbackBase = (
               process.env.WEBHOOK_BASE_URL ||
               process.env.RENDER_EXTERNAL_URL ||
@@ -1295,46 +1414,44 @@ async function startServer() {
             ).replace(/\/$/, '');
             const promptText = custom_prompt || `Autonomous talent outreach for ${cand.name} for position ${position || 'Engineering Role'}.`;
 
-            // FIX 5: Diagnostic logging
-            console.log(`[HUNAR BULK DISPATCH] POST ${endpoint} — candidate: ${cand.name} to: ${cand.contact_phone}`);
-
-            const hunarRes = await fetchWithRetry(endpoint, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': HUNAR_API_KEY,
-                'User-Agent': 'Hunar-Voice-Agents/1.0'
+            const payload: any = {
+              agent_id: HUNAR_REACHOUT_AGENT_ID,
+              from_number: HUNAR_FROM_PHONE_NUMBER,
+              from_phone_number: HUNAR_FROM_PHONE_NUMBER,
+              callee_name: cand.name,
+              mobile_number: cand.contact_phone,
+              to_number: cand.contact_phone,
+              custom_data: {
+                company: 'Enterprise Voice AI Platform',
+                job_role: position || 'Engineering Role',
+                job_description: promptText,
+                candidate_name: cand.name
               },
-              body: JSON.stringify({
-                agent_id: HUNAR_REACHOUT_AGENT_ID,
-                // FIX 2: Include from_number (caller ID) — required by Hunar API
-                from_number: HUNAR_FROM_PHONE_NUMBER,
-                callee_name: cand.name,
-                mobile_number: cand.contact_phone,
-                to_number: cand.contact_phone,
-                custom_data: {
-                  company: 'Enterprise Voice AI Platform',
-                  job_role: position || 'Engineering Role',
-                  job_description: promptText,
-                  candidate_name: cand.name
-                },
-                request_id: callId,
-                callback_config: {
-                  call_status_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
-                  call_recording_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
-                  call_result_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
-                  call_summary_callback_url: `${callbackBase}/api/v1/webhooks/hunar`
-                }
-              })
-            });
+              request_id: callId,
+              callback_config: {
+                call_status_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+                call_recording_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+                call_result_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+                call_summary_callback_url: `${callbackBase}/api/v1/webhooks/hunar`
+              },
+              call_status_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+              call_recording_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+              call_result_callback_url: `${callbackBase}/api/v1/webhooks/hunar`,
+              call_summary_callback_url: `${callbackBase}/api/v1/webhooks/hunar`
+            };
+
+            console.log(`[HUNAR BULK DISPATCH] Initiating dispatch for candidate: ${cand.name} to: ${cand.contact_phone}`);
+
+            const { res: hunarRes, workingEndpoint } = await dispatchHunarCall(HUNAR_REACHOUT_AGENT_ID, payload);
+
             if (hunarRes && hunarRes.ok) {
               const data = (await hunarRes.json()) as any;
-              console.log(`[HUNAR BULK DISPATCH] Success — HTTP ${hunarRes.status}:`, JSON.stringify(data));
+              console.log(`[HUNAR BULK DISPATCH] Success on ${workingEndpoint} — HTTP ${hunarRes.status}:`, JSON.stringify(data));
               if (data.id || data.call_id) callId = data.id || data.call_id;
             } else if (hunarRes) {
               let errDetail = '';
               try { const e = (await hunarRes.json()) as any; errDetail = e.message || e.detail || JSON.stringify(e); } catch {}
-              console.error(`[HUNAR BULK DISPATCH] Rejected — HTTP ${hunarRes.status}: ${errDetail}`);
+              console.error(`[HUNAR BULK DISPATCH] Rejected on ${workingEndpoint || 'all routes'} — HTTP ${hunarRes.status}: ${errDetail}`);
             } else {
               console.error('[HUNAR BULK DISPATCH] No response — network timeout.');
             }

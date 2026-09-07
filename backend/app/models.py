@@ -1,6 +1,9 @@
 import datetime
 from sqlalchemy import Column, Integer, String, Text, Float, Boolean, DateTime
-from app.database import Base
+try:
+    from app.database import Base
+except ImportError:
+    from .database import Base
 
 class CallRecord(Base):
     __tablename__ = "call_records"

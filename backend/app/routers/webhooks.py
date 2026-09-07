@@ -9,9 +9,14 @@ from typing import Optional, Dict, Any, Iterable
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, BackgroundTasks, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db, SessionLocal
-from app.models import CallRecord
-from app.config import settings
+try:
+    from app.database import get_db, SessionLocal
+    from app.models import CallRecord
+    from app.config import settings
+except ImportError:
+    from ..database import get_db, SessionLocal
+    from ..models import CallRecord
+    from ..config import settings
 
 logger = logging.getLogger(__name__)
 

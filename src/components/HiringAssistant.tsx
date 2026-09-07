@@ -59,12 +59,15 @@ export const HiringAssistant: React.FC = () => {
     fetchCalls(false);
   }, [fetchCalls]);
 
-  // Sequential, non-overlapping polling when active calls are in-flight
+  const pollCountRef = useRef(0);
+
+  // Sequential, non-overlapping polling when active calls are in-flight (guarded with max poll count & visibility check)
   useEffect(() => {
     const hasActiveCalls = calls.some(
       (c) => c.status === 'Initiated' || c.status === 'Ringing' || c.status === 'In Progress'
     );
     if (!hasActiveCalls) {
+      pollCountRef.current = 0;
       if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
       return;
     }
@@ -73,8 +76,20 @@ export const HiringAssistant: React.FC = () => {
 
     const scheduleNextPoll = () => {
       if (!isMounted) return;
+      // Safety cap: stop auto-polling after 30 poll cycles (~2 minutes) to prevent infinite loops
+      if (pollCountRef.current > 30) {
+        if (pollingTimeoutRef.current) clearTimeout(pollingTimeoutRef.current);
+        return;
+      }
+
       pollingTimeoutRef.current = setTimeout(async () => {
         if (!isMounted) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+          // Pause polling while tab is hidden
+          scheduleNextPoll();
+          return;
+        }
+        pollCountRef.current += 1;
         await fetchCalls(true);
         if (isMounted) scheduleNextPoll();
       }, 4000);
@@ -369,6 +384,7 @@ export const HiringAssistant: React.FC = () => {
 
           <div className="space-y-2.5">
             <button
+              type="button"
               onClick={() =>
                 handleQuickFill(
                   'Maya Lin',
@@ -387,6 +403,7 @@ export const HiringAssistant: React.FC = () => {
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 handleQuickFill(
                   'Tariq Hameed',
@@ -405,6 +422,7 @@ export const HiringAssistant: React.FC = () => {
             </button>
 
             <button
+              type="button"
               onClick={() =>
                 handleQuickFill(
                   'Claire Dubois',

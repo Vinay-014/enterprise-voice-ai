@@ -3,10 +3,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
-from app.database import get_db
-from app.models import CallRecord
-from app.schemas import TriggerCallRequest, CallDetailResponse
-from app.services.hunar_service import hunar_service
+try:
+    from app.database import get_db
+    from app.models import CallRecord
+    from app.schemas import TriggerCallRequest, CallDetailResponse
+    from app.services.hunar_service import hunar_service
+except ImportError:
+    from ..database import get_db
+    from ..models import CallRecord
+    from ..schemas import TriggerCallRequest, CallDetailResponse
+    from ..services.hunar_service import hunar_service
 
 router = APIRouter(prefix="/api/v1/hiring", tags=["AI Hiring Assistant"])
 
@@ -52,15 +58,15 @@ def seed_default_calls_if_empty(db: Session):
                 phone_number="+1-206-555-4421",
                 position="Full-Stack Engineer",
                 custom_prompt="Inquire on Next.js 14 App Router, TypeScript state management, and Python backend APIs.",
-                status="Ringing",
-                duration_seconds=42,
-                transcript="Agent: Outbound call initiated. Ringing recipient...",
-                audio_recording_url=None,
-                overall_score=0.0,
-                interest_score=0.0,
-                answers_summary="Call in progress. Awaiting recipient interaction.",
-                disposition="Pending",
-                created_at=datetime.datetime.utcnow() - datetime.timedelta(minutes=3)
+                status="Completed",
+                duration_seconds=184,
+                transcript="Agent: Hello Jordan, calling from Hunar AI regarding the Full-Stack Engineer position.\n\nCandidate: Hello! Glad to connect.\n\nAgent: Could you tell us about your experience building responsive TypeScript web applications?\n\nCandidate: I have built full-stack applications with React, TypeScript, and FastAPI for 4+ years.\n\nAgent: Wonderful. Our team will review and get back to you.",
+                audio_recording_url="https://api.voice.hunar.ai/recordings/call_hunar_77341c.mp3",
+                overall_score=88.0,
+                interest_score=90.0,
+                answers_summary="Solid full-stack competencies. Responsive communication.",
+                disposition="Interested",
+                created_at=datetime.datetime.utcnow() - datetime.timedelta(minutes=30)
             )
         ]
         for c in default_calls:

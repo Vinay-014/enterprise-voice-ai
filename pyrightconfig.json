@@ -1,0 +1,11 @@
+{
+  "include": [
+    "backend"
+  ],
+  "extraPaths": [
+    "backend",
+    "backend/app"
+  ],
+  "pythonVersion": "3.10",
+  "reportMissingImports": "warning"
+}

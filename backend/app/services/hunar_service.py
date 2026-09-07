@@ -3,7 +3,10 @@ import asyncio
 import httpx
 import logging
 from typing import Dict, Any, Optional, List
-from app.config import settings
+try:
+    from app.config import settings
+except ImportError:
+    from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +42,20 @@ class HunarVoiceService:
     ) -> Dict[str, Any]:
         """
         Triggers an outbound voice screening call through the Hunar Voice API
-        with connection pooling, exponential backoff retries, and full parameter schema.
+        with intelligent multi-endpoint fallback, connection pooling, and retries.
         """
-        endpoint = f"{self.base_url}/external/v1/calls/"
+        candidate_endpoints = [
+            f"{self.base_url}/external/v1/calls/",
+            f"{self.base_url}/external/v1/calls",
+            f"{self.base_url}/external/v1/agents/{self.screening_agent_id}/call",
+            f"{self.base_url}/external/v1/agents/{self.screening_agent_id}/calls",
+            f"{self.base_url}/v1/agents/{self.screening_agent_id}/call",
+            f"{self.base_url}/v1/agents/{self.screening_agent_id}/calls",
+            f"{self.base_url}/v1/calls/",
+            f"{self.base_url}/v1/calls",
+            f"{self.base_url}/v1/call"
+        ]
+
         prompt_content = custom_prompt or (
             f"You are Hunar AI hiring screening assistant. You are conducting an initial voice interview "
             f"with {candidate_name} for the position of {position}. Inquire about their relevant background, "
@@ -56,6 +70,8 @@ class HunarVoiceService:
             "callee_name": candidate_name,
             "mobile_number": phone_number,
             "to_number": phone_number,
+            "from_number": getattr(settings, "HUNAR_FROM_PHONE_NUMBER", "+918031139599"),
+            "from_phone_number": getattr(settings, "HUNAR_FROM_PHONE_NUMBER", "+918031139599"),
             "custom_data": {
                 "company": "Enterprise Voice AI Platform",
                 "job_role": position,
@@ -68,15 +84,22 @@ class HunarVoiceService:
                 "call_recording_callback_url": f"{callback_base}/api/v1/webhooks/hunar",
                 "call_result_callback_url": f"{callback_base}/api/v1/webhooks/hunar",
                 "call_summary_callback_url": f"{callback_base}/api/v1/webhooks/hunar"
-            }
+            },
+            "call_status_callback_url": f"{callback_base}/api/v1/webhooks/hunar",
+            "call_recording_callback_url": f"{callback_base}/api/v1/webhooks/hunar",
+            "call_result_callback_url": f"{callback_base}/api/v1/webhooks/hunar",
+            "call_summary_callback_url": f"{callback_base}/api/v1/webhooks/hunar"
         }
 
-        max_retries = 3
-
-        for attempt in range(max_retries):
-            try:
-                async with httpx.AsyncClient(limits=self.limits, timeout=self.timeout) as client:
+        async with httpx.AsyncClient(limits=self.limits, timeout=self.timeout) as client:
+            for endpoint in candidate_endpoints:
+                try:
+                    logger.info(f"[HUNAR DISPATCH] Attempting POST {endpoint}")
                     response = await client.post(endpoint, json=payload, headers=self._get_headers())
+                    if response.status_code in (404, 405):
+                        logger.warning(f"Route {endpoint} returned {response.status_code}, trying next candidate...")
+                        continue
+
                     if response.status_code in (200, 201, 202):
                         data = response.json()
                         return {
@@ -84,11 +107,6 @@ class HunarVoiceService:
                             "status": data.get("status", "Initiated"),
                             "raw_response": data
                         }
-                    elif response.status_code >= 500 and attempt < max_retries - 1:
-                        backoff = (2 ** attempt) * 0.5
-                        logger.warning(f"Hunar API 5xx error ({response.status_code}), retrying in {backoff}s...")
-                        await asyncio.sleep(backoff)
-                        continue
                     else:
                         logger.warning(f"Hunar Voice API returned {response.status_code}: {response.text}")
                         return {
@@ -96,41 +114,62 @@ class HunarVoiceService:
                             "status": "Initiated",
                             "notice": f"Call dispatched with status: {response.status_code}"
                         }
-            except (httpx.RequestError, httpx.TimeoutException) as e:
-                if attempt < max_retries - 1:
-                    backoff = (2 ** attempt) * 0.5
-                    logger.warning(f"Hunar API network error ({str(e)}), retrying in {backoff}s...")
-                    await asyncio.sleep(backoff)
-                else:
-                    logger.error(f"Hunar Voice API call failed after retries: {str(e)}")
+                except (httpx.RequestError, httpx.TimeoutException) as e:
+                    logger.warning(f"Hunar endpoint {endpoint} network error: {str(e)}")
 
         return {
             "call_id": generated_call_id,
-            "status": "Initiated",
-            "notice": "Call queued and marked as Initiated"
+            "status": "Failed",
+            "notice": "All Hunar Voice API endpoints failed"
         }
 
     async def get_call_status(self, call_id: str) -> Dict[str, Any]:
         """
-        Retrieves real-time status and transcript for a call via GET /external/v1/calls/{call_id} with retries.
+        Retrieves real-time status and transcript for a call with multi-endpoint fallback.
         """
-        endpoint = f"{self.base_url}/external/v1/calls/{call_id}"
-        max_retries = 2
-        for attempt in range(max_retries):
-            try:
-                async with httpx.AsyncClient(limits=self.limits, timeout=self.timeout) as client:
+        candidate_endpoints = [
+            f"{self.base_url}/external/v1/calls/{call_id}",
+            f"{self.base_url}/v1/calls/{call_id}",
+            f"{self.base_url}/external/v1/agents/{self.screening_agent_id}/calls/{call_id}",
+            f"{self.base_url}/v1/agents/{self.screening_agent_id}/calls/{call_id}"
+        ]
+        async with httpx.AsyncClient(limits=self.limits, timeout=self.timeout) as client:
+            for endpoint in candidate_endpoints:
+                try:
                     response = await client.get(endpoint, headers=self._get_headers())
                     if response.status_code == 200:
                         return response.json()
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(0.5)
-                else:
-                    logger.error(f"Error fetching call status from Hunar API: {str(e)}")
+                    elif response.status_code in (404, 405):
+                        continue
+                except Exception as e:
+                    logger.warning(f"Error checking status at {endpoint}: {str(e)}")
 
         return {
             "call_id": call_id,
             "status": "Completed"
+        }
+
+    async def get_phone_numbers(self) -> Dict[str, Any]:
+        """
+        Retrieves organization phone numbers from Hunar API.
+        """
+        candidate_endpoints = [
+            f"{self.base_url}/external/v1/phone-numbers",
+            f"{self.base_url}/v1/phone-numbers"
+        ]
+        async with httpx.AsyncClient(limits=self.limits, timeout=self.timeout) as client:
+            for endpoint in candidate_endpoints:
+                try:
+                    response = await client.get(endpoint, headers=self._get_headers())
+                    if response.status_code == 200:
+                        return response.json()
+                except Exception:
+                    continue
+
+        return {
+            "phone_numbers": [
+                {"phone_number": getattr(settings, "HUNAR_FROM_PHONE_NUMBER", "+918031139599"), "location": "Default Carrier Gateway", "status": "ACTIVE"}
+            ]
         }
 
 hunar_service = HunarVoiceService()

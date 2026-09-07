@@ -4,14 +4,24 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 
-from app.database import get_db
-from app.models import SiteLocation, AttendanceRecord
-from app.schemas import (
-    AttendanceCheckinRequest,
-    AttendanceRecordResponse,
-    AttendanceOverviewResponse,
-    SiteLocationItem
-)
+try:
+    from app.database import get_db
+    from app.models import SiteLocation, AttendanceRecord
+    from app.schemas import (
+        AttendanceCheckinRequest,
+        AttendanceRecordResponse,
+        AttendanceOverviewResponse,
+        SiteLocationItem
+    )
+except ImportError:
+    from ..database import get_db
+    from ..models import SiteLocation, AttendanceRecord
+    from ..schemas import (
+        AttendanceCheckinRequest,
+        AttendanceRecordResponse,
+        AttendanceOverviewResponse,
+        SiteLocationItem
+    )
 
 router = APIRouter(prefix="/api/v1/attendance", tags=["Smartphone-Free Attendance System"])
 

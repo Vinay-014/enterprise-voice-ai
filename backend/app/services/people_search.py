@@ -1,6 +1,9 @@
 import re
 from typing import List, Dict, Any
-from app.schemas import ExtractedJDMetadata, CandidateProfileItem
+try:
+    from app.schemas import ExtractedJDMetadata, CandidateProfileItem
+except ImportError:
+    from ..schemas import ExtractedJDMetadata, CandidateProfileItem
 
 KNOWN_SKILLS = [
     "Python", "FastAPI", "React", "Next.js", "TypeScript", "JavaScript",

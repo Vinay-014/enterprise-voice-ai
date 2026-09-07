@@ -4,16 +4,28 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 
-from app.database import get_db
-from app.models import CallRecord
-from app.schemas import (
-    JDSearchRequest,
-    CandidateSearchResponse,
-    BulkReachoutRequest,
-    BulkReachoutResponse
-)
-from app.services.people_search import people_search_service, CANDIDATE_POOL
-from app.services.hunar_service import hunar_service
+try:
+    from app.database import get_db
+    from app.models import CallRecord
+    from app.schemas import (
+        JDSearchRequest,
+        CandidateSearchResponse,
+        BulkReachoutRequest,
+        BulkReachoutResponse
+    )
+    from app.services.people_search import people_search_service, CANDIDATE_POOL
+    from app.services.hunar_service import hunar_service
+except ImportError:
+    from ..database import get_db
+    from ..models import CallRecord
+    from ..schemas import (
+        JDSearchRequest,
+        CandidateSearchResponse,
+        BulkReachoutRequest,
+        BulkReachoutResponse
+    )
+    from ..services.people_search import people_search_service, CANDIDATE_POOL
+    from ..services.hunar_service import hunar_service
 
 router = APIRouter(prefix="/api/v1", tags=["People Search & Reachout"])
 
