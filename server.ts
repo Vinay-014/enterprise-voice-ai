@@ -112,22 +112,98 @@ export function verifyHunarWebhookSignature(
   return false;
 }
 
-// Webhook Idempotency Cache (tracks call_id:event_type)
+// Webhook Idempotency Cache (tracks call_id:event_type:sequenceHint)
 const processedWebhooks = new Map<string, number>();
 
-function isWebhookDuplicate(callId: string, eventType: string): boolean {
-  const key = `${callId}:${eventType}`;
+/**
+ * Returns a short discriminator that identifies which of the four Hunar
+ * callbacks this payload most likely represents, independent of event_type.
+ * Prevents false-positive deduplication when all four callbacks default to
+ * the same event_type (e.g. 'call_status_updated').
+ */
+function webhookSequenceHint(body: Record<string, any>): string {
+  if (body.result || body.qualified || body.interested) return 'result';
+  if (body.recording_url || body.audio_url || body.audio_recording_url) return 'recording';
+  if (body.answers_summary || body.summary ||
+      body.overall_score !== undefined || body.interest_score !== undefined) return 'summary';
+  return 'status';
+}
+
+function isWebhookDuplicate(callId: string, eventType: string, sequenceHint = ''): boolean {
+  const key = `${callId}:${eventType}:${sequenceHint}`;
   const now = Date.now();
   if (processedWebhooks.size > 5000) {
     for (const [k, time] of processedWebhooks.entries()) {
       if (now - time > 3600000) processedWebhooks.delete(k);
     }
   }
-  if (processedWebhooks.has(key)) {
-    return true;
-  }
+  if (processedWebhooks.has(key)) return true;
   processedWebhooks.set(key, now);
   return false;
+}
+
+/**
+ * Maps Hunar's `interested` field to a canonical disposition string.
+ * Accepts: 'yes', 'true', '1', 'interested', 'y' (case-insensitive) → 'Interested'
+ * Everything else → 'Not Interested'.
+ * Returns null when value is absent/falsy.
+ */
+function resolveInterest(value: any): 'Interested' | 'Not Interested' | null {
+  if (value === undefined || value === null) return null;
+  const v = String(value).trim().toLowerCase();
+  if (!v) return null;
+  return ['yes', 'true', '1', 'interested', 'y'].includes(v) ? 'Interested' : 'Not Interested';
+}
+
+/**
+ * Extracts a numeric overall score from the result sub-dict or top-level payload.
+ * Priority: result.overall_score → result.score → result.rating
+ *         → payload.overall_score → binary result.qualified (92/65 fallback)
+ * Returns null when no score can be extracted.
+ */
+function resolveScore(result: Record<string, any>, payload: Record<string, any>): number | null {
+  for (const key of ['overall_score', 'score', 'rating'] as const) {
+    const raw = result[key];
+    if (raw !== undefined && raw !== null) {
+      const n = Number(raw);
+      if (!isNaN(n)) return n;
+    }
+  }
+  if (payload.overall_score !== undefined && payload.overall_score !== null) {
+    const n = Number(payload.overall_score);
+    if (!isNaN(n)) return n;
+  }
+  if (result.qualified !== undefined && result.qualified !== null) {
+    return String(result.qualified).toLowerCase().includes('yes') ? 92.0 : 65.0;
+  }
+  return null;
+}
+
+/**
+ * Extracts an interest/engagement score from result or payload.
+ */
+function resolveInterestScore(result: Record<string, any>, payload: Record<string, any>): number | null {
+  for (const src of [result, payload]) {
+    for (const key of ['interest_score', 'engagement_score', 'enthusiasm_score'] as const) {
+      const raw = (src as any)[key];
+      if (raw !== undefined && raw !== null) {
+        const n = Number(raw);
+        if (!isNaN(n)) return n;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns the best available answers_summary text.
+ */
+function extractSummary(result: Record<string, any>, payload: Record<string, any>): string | null {
+  for (const key of ['answers_summary', 'reason', 'summary', 'notes'] as const) {
+    const val = (result as any)[key] || (payload as any)[key];
+    if (val) return String(val);
+  }
+  return null;
 }
 
 interface CallRecord {
@@ -866,8 +942,13 @@ async function startServer() {
         if (data.answers_summary) call.answers_summary = data.answers_summary;
         if (data.disposition) call.disposition = data.disposition;
         if (data.result && typeof data.result === 'object') {
-          if (data.result.interested) call.disposition = data.result.interested === 'Yes' ? 'Interested' : 'Not Interested';
-          if (data.result.reason) call.answers_summary = data.result.reason;
+          // Use resolveInterest so all truthy variants are accepted
+          const refreshDisposition = resolveInterest(data.result.interested ?? data.result.interest);
+          if (refreshDisposition) call.disposition = refreshDisposition;
+          const refreshScore = resolveScore(data.result, data);
+          if (refreshScore !== null) call.overall_score = refreshScore;
+          const refreshSummary = extractSummary(data.result, data);
+          if (refreshSummary) call.answers_summary = refreshSummary;
         }
         call.updated_at = new Date().toISOString();
 
@@ -931,8 +1012,11 @@ async function startServer() {
         return res.status(200).json({ status: 'ignored', reason: 'Missing call_id parameter' });
       }
 
-      // 2. Idempotency Check (call_id + event_type)
-      if (isWebhookDuplicate(call_id, event_type)) {
+      // 2. Idempotency Check — includes sequenceHint so the four callbacks
+      //    (status/recording/result/summary) aren't collapsed even when they
+      //    all default to the same event_type string.
+      const hint = webhookSequenceHint(body);
+      if (isWebhookDuplicate(call_id, event_type, hint)) {
         return res.status(200).json({ status: 'idempotent_ignored', call_id, event_type });
       }
 
@@ -992,18 +1076,36 @@ async function startServer() {
 
           // C. call_result_done
           if (event_type === 'call_result_done' || body.result) {
-            const resData = body.result || body.data?.result || {};
-            if (resData.interested) {
-              call.disposition = resData.interested.toLowerCase().includes('yes') ? 'Interested' : 'Not Interested';
+            const resData: Record<string, any> = body.result || body.data?.result || {};
+
+            // Disposition — accepts 'yes','true','1','interested' variants
+            const disposition = resolveInterest(resData.interested ?? resData.interest);
+            if (disposition) call.disposition = disposition;
+
+            // Numeric score — checks result.overall_score, result.score,
+            // result.rating, payload.overall_score, binary result.qualified
+            const score = resolveScore(resData, body);
+            if (score !== null) call.overall_score = score;
+
+            // Interest / engagement score
+            const iScore = resolveInterestScore(resData, body);
+            if (iScore !== null) call.interest_score = iScore;
+
+            // Answers summary
+            const summary = extractSummary(resData, body);
+            if (summary) call.answers_summary = summary;
+
+            // Transcript embedded in result
+            const transcript = resData.transcript || body.transcript;
+            if (transcript) call.transcript = transcript;
+
+            // Status update from result payload
+            const rawStatus = String(body.status || '').toUpperCase();
+            if (rawStatus === 'COMPLETED') call.status = 'Completed';
+            else if (rawStatus === 'NOT_CONNECTED' || rawStatus === 'FAILED' || rawStatus === 'CANCELLED') {
+              call.status = 'Failed';
+              if (call.disposition === 'Pending') call.disposition = 'Failed';
             }
-            if (resData.qualified) {
-              call.overall_score = resData.qualified.toLowerCase().includes('yes') ? 92.0 : 65.0;
-            }
-            if (resData.reason) {
-              call.answers_summary = resData.reason;
-            }
-            if (body.overall_score !== undefined) call.overall_score = Number(body.overall_score);
-            if (body.interest_score !== undefined) call.interest_score = Number(body.interest_score);
           }
 
           // D. call_summary (Consolidated terminal update)
@@ -1012,19 +1114,34 @@ async function startServer() {
             if (rawStatus === 'COMPLETED') call.status = 'Completed';
             else if (rawStatus === 'NOT_CONNECTED' || rawStatus === 'FAILED' || rawStatus === 'CANCELLED') {
               call.status = 'Failed';
-              call.disposition = 'Failed';
+              if (call.disposition === 'Pending') call.disposition = 'Failed';
             }
+
             if (body.duration_seconds !== undefined) call.duration_seconds = Number(body.duration_seconds);
             if (body.recording_url || body.audio_url) call.audio_recording_url = body.recording_url || body.audio_url;
-            if (body.transcript) call.transcript = body.transcript;
-            if (body.result) {
-              const resData = body.result;
-              if (resData.interested) call.disposition = resData.interested.toLowerCase().includes('yes') ? 'Interested' : 'Not Interested';
-              if (resData.reason) call.answers_summary = resData.reason;
-            }
+
+            // Transcript
+            const summaryResData: Record<string, any> = body.result || {};
+            const transcript = summaryResData.transcript || body.transcript;
+            if (transcript) call.transcript = transcript;
+
+            // Disposition — resolve all truthy variants from result or top-level
+            const disposition = resolveInterest(summaryResData.interested ?? summaryResData.interest);
+            if (disposition) call.disposition = disposition;
+            // Top-level explicit disposition overrides result-level
             if (body.disposition) call.disposition = body.disposition;
-            if (body.overall_score !== undefined) call.overall_score = Number(body.overall_score);
-            if (body.interest_score !== undefined) call.interest_score = Number(body.interest_score);
+
+            // Scores — full resolution pipeline
+            const score = resolveScore(summaryResData, body);
+            if (score !== null) call.overall_score = score;
+
+            const iScore = resolveInterestScore(summaryResData, body);
+            if (iScore !== null) call.interest_score = iScore;
+
+            // Answers summary
+            const summary = extractSummary(summaryResData, body);
+            if (summary) call.answers_summary = summary;
+
             if (body.lifecycle_status) call.lifecycle_status = body.lifecycle_status;
           }
 
