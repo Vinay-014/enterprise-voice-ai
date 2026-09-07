@@ -613,7 +613,7 @@ async function fetchHunarPhoneNumbers(): Promise<globalThis.Response | null> {
 }
 
 // In-Memory Database Store for live operations
-let callCounter = 3;
+let callCounter = 5;
 const callsDb: CallRecord[] = [
   {
     id: 1,
@@ -662,9 +662,43 @@ const callsDb: CallRecord[] = [
     audio_recording_url: 'https://api.voice.hunar.ai/recordings/call_hunar_77341c.mp3',
     overall_score: 88.0,
     interest_score: 90.0,
-    answers_summary: 'Experienced with Next.js, TypeScript, and microservices.',
+    answers_summary: 'Solid full-stack competencies across React and FastAPI. Responsive communication.',
     disposition: 'Interested',
     created_at: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  },
+  {
+    id: 4,
+    call_id: 'call_hunar_66219d',
+    candidate_name: 'Marcus Aurelius Vance',
+    phone_number: '+1-212-555-0198',
+    position: 'Staff Backend Architect',
+    custom_prompt: 'Evaluate experience architecting event-driven microservices, Python/FastAPI pipelines, and database sharding at scale.',
+    status: 'Completed',
+    duration_seconds: 448,
+    transcript: 'Agent: Good afternoon Marcus, this is the Hunar AI technical screening assistant. Are you ready for a brief conversation regarding the Staff Backend Architect role?\n\nCandidate: Good afternoon. Yes, I have time and am excited to discuss the role.\n\nAgent: Excellent. Can you walk me through your architectural strategy for scaling event-driven Python microservices handling high transaction volumes?\n\nCandidate: In my previous architecture at InfraLabs, we structured our core services around FastAPI with Kafka event streams and PostgreSQL with Citus sharding. We decoupled ingestion from processing workers using async queue workers with backpressure management, allowing us to maintain sub-50ms latency across 120,000 transactions per second during peak loads.\n\nAgent: That demonstrates profound system architecture expertise. What is your preferred working arrangement and compensation expectations?\n\nCandidate: I work best in a hybrid or remote setup with occasional travel. My target total compensation is around $220k-$240k base.\n\nAgent: Thank you Marcus. Your technical responses have been recorded and will be shared with our engineering leadership team.',
+    audio_recording_url: 'https://api.voice.hunar.ai/recordings/call_hunar_66219d.mp3',
+    overall_score: 96.0,
+    interest_score: 98.0,
+    answers_summary: 'Outstanding technical leadership in distributed systems, Kafka streaming architectures, and high-scale FastAPI backend design. Highly articulate with strong problem-solving clarity.',
+    disposition: 'Interested',
+    created_at: new Date(Date.now() - 8 * 3600 * 1000 - 10 * 60 * 1000).toISOString()
+  },
+  {
+    id: 5,
+    call_id: 'call_hunar_55140e',
+    candidate_name: 'Sarah Chen',
+    phone_number: '+1-415-555-0142',
+    position: 'Senior Full-Stack Engineer',
+    custom_prompt: 'Screen for TypeScript/Next.js frontend design systems, Python backend APIs, and end-to-end telemetry observability.',
+    status: 'Completed',
+    duration_seconds: 210,
+    transcript: 'Agent: Hello Sarah, this is Hunar AI calling regarding the Senior Full-Stack Engineer position. Do you have a few minutes to speak?\n\nCandidate: Hi! Yes, perfect timing.\n\nAgent: Great. How do you approach integrating modern Next.js frontend interfaces with FastAPI backend microservices?\n\nCandidate: I specialize in building type-safe end-to-end architectures using Next.js 14 App Router, React Server Components, and OpenAPI/TypeScript contract generation against FastAPI endpoints. For state management, I combine React Query for server caching with lightweight Zustand stores.\n\nAgent: Excellent. What is your current availability to transition into a new position?\n\nCandidate: I am available to join within 3 weeks of an accepted offer.\n\nAgent: Wonderful. Thank you Sarah, our hiring team will review your screening summary today.',
+    audio_recording_url: 'https://api.voice.hunar.ai/recordings/call_hunar_55140e.mp3',
+    overall_score: 92.5,
+    interest_score: 94.0,
+    answers_summary: 'Strong type-safe full-stack architectural skill across Next.js and FastAPI. Pragmatic state management approach and 3-week availability.',
+    disposition: 'Interested',
+    created_at: new Date(Date.now() - 12 * 3600 * 1000 - 30 * 60 * 1000).toISOString()
   }
 ];
 
@@ -1089,8 +1123,8 @@ async function startServer() {
 
   app.get('/api/v1/hiring/calls', (req: Request, res: Response) => {
     const statusFilter = req.query.status as string | undefined;
-    if (statusFilter) {
-      return res.json(callsDb.filter((c) => c.status.toLowerCase() === statusFilter.toLowerCase()));
+    if (statusFilter && statusFilter.trim().toLowerCase() !== 'all' && statusFilter.trim() !== '') {
+      return res.json(callsDb.filter((c) => c.status.toLowerCase() === statusFilter.trim().toLowerCase()));
     }
     return res.json(callsDb);
   });

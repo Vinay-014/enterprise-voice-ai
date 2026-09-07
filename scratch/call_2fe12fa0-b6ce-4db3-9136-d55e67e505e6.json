@@ -1,0 +1,75 @@
+{
+  "id": "2fe12fa0-b6ce-4db3-9136-d55e67e505e6",
+  "callee_name": "Vinay K S",
+  "mobile_number": "+916361006588",
+  "agent_id": "0f870d5a-ba01-4a4a-bc97-611727aa1837",
+  "language": "ENGLISH",
+  "campaign_id": null,
+  "status": "COMPLETED",
+  "lifecycle_status": "COMPLETED",
+  "custom_data": {
+    "company": "Enterprise Voice AI Platform",
+    "job_role": "AI/ML Engineer",
+    "candidate_name": "Vinay K S",
+    "job_description": "Screen candidate Vinay K S for the position of AI/ML Engineer."
+  },
+  "system_data": {
+    "greeting": "Good afternoon",
+    "callee_name": "vinay k s",
+    "current_time": "11:57:23 07 September 2026 Monday",
+    "persona_name": "Neha",
+    "mobile_number": "+916361006588"
+  },
+  "duration_minutes": 3.62,
+  "duration_seconds": 217.0,
+  "user_speech_duration": 98.4,
+  "engagement_status": "ENGAGED",
+  "answered_by": "HUMAN",
+  "call_ended_by": "AGENT",
+  "recording_url": "https://hunar-voice-prod-071853465125-ap-south-1-an.s3.ap-south-1.amazonaws.com/call/recording/fde-hiring/2fe12fa0-b6ce-4db3-9136-d55e67e505e6_0_plivo.wav",
+  "result": {
+    "reason": "Initial screening for AI ML engineer position",
+    "qualified": true,
+    "interested": true,
+    "notice_period": "15 days",
+    "expected_salary": "14.5 lakhs per annum",
+    "relevant_skills": "production, machine learning operations, applied AI agentic systems, classical machine learning, explainability AI",
+    "years_experience": 0
+  },
+  "created_at": "2026-09-07T06:26:38.317Z",
+  "updated_at": "2026-09-07T06:31:45.123Z",
+  "started_at": "2026-09-07T06:27:23.751Z",
+  "ended_at": "2026-09-07T06:31:10Z",
+  "triggered_by": null,
+  "max_retries": 0,
+  "retry_count": 0,
+  "retries_left": 0,
+  "next_retry_scheduled_at": null,
+  "redial_status": null,
+  "timezone": "Asia/Kolkata",
+  "from_phone_number": "+918031139599",
+  "callback_config": {
+    "call_result_callback_url": "https://enterprise-voice-ai.onrender.com/api/v1/webhooks/hunar",
+    "call_status_callback_url": "https://enterprise-voice-ai.onrender.com/api/v1/webhooks/hunar",
+    "call_summary_callback_url": "https://enterprise-voice-ai.onrender.com/api/v1/webhooks/hunar",
+    "call_recording_callback_url": "https://enterprise-voice-ai.onrender.com/api/v1/webhooks/hunar"
+  },
+  "retry_config": {
+    "max_retry_count": 0,
+    "retry_interval_hours": 0
+  },
+  "guardrails": {
+    "allowed_days": [
+      "MON",
+      "TUE",
+      "WED",
+      "THU",
+      "FRI",
+      "SAT",
+      "SUN"
+    ],
+    "last_call_time": "21:00",
+    "earliest_call_time": "08:00"
+  },
+  "request_id": "hunar_call_mtquy3m1_1cxz"
+}

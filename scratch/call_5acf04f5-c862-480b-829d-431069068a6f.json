@@ -1,0 +1,75 @@
+{
+  "id": "5acf04f5-c862-480b-829d-431069068a6f",
+  "callee_name": "Vinay",
+  "mobile_number": "+916361006588",
+  "agent_id": "0f870d5a-ba01-4a4a-bc97-611727aa1837",
+  "language": "ENGLISH",
+  "campaign_id": null,
+  "status": "COMPLETED",
+  "lifecycle_status": "COMPLETED",
+  "custom_data": {
+    "company": "Enterprise Voice AI Platform",
+    "job_role": "Site Reliability Engineer",
+    "candidate_name": "Vinay",
+    "job_description": "Screen candidate Vinay for the position of Site Reliability Engineer."
+  },
+  "system_data": {
+    "greeting": "Good morning",
+    "callee_name": "vinay",
+    "current_time": "10:49:34 07 September 2026 Monday",
+    "persona_name": "Neha",
+    "mobile_number": "+916361006588"
+  },
+  "duration_minutes": 1.73,
+  "duration_seconds": 104.0,
+  "user_speech_duration": 16.4,
+  "engagement_status": "ENGAGED",
+  "answered_by": "HUMAN",
+  "call_ended_by": "AGENT",
+  "recording_url": "https://hunar-voice-prod-071853465125-ap-south-1-an.s3.ap-south-1.amazonaws.com/call/recording/fde-hiring/5acf04f5-c862-480b-829d-431069068a6f_0_plivo.wav",
+  "result": {
+    "reason": "User is not currently interested in site reliability engineering opportunities.",
+    "qualified": false,
+    "interested": false,
+    "notice_period": "NOT AVAILABLE",
+    "expected_salary": "NOT AVAILABLE",
+    "relevant_skills": "NOT AVAILABLE",
+    "years_experience": 0
+  },
+  "created_at": "2026-09-07T05:18:58.315Z",
+  "updated_at": "2026-09-07T05:22:14.711Z",
+  "started_at": "2026-09-07T05:19:34.469Z",
+  "ended_at": "2026-09-07T05:21:46Z",
+  "triggered_by": null,
+  "max_retries": 0,
+  "retry_count": 0,
+  "retries_left": 0,
+  "next_retry_scheduled_at": null,
+  "redial_status": null,
+  "timezone": "Asia/Kolkata",
+  "from_phone_number": "+918031139599",
+  "callback_config": {
+    "call_result_callback_url": "https://enterprise-voice-ai.onrender.com/api/v1/webhooks/hunar",
+    "call_status_callback_url": "https://enterprise-voice-ai.onrender.com/api/v1/webhooks/hunar",
+    "call_summary_callback_url": "https://enterprise-voice-ai.onrender.com/api/v1/webhooks/hunar",
+    "call_recording_callback_url": "https://enterprise-voice-ai.onrender.com/api/v1/webhooks/hunar"
+  },
+  "retry_config": {
+    "max_retry_count": 0,
+    "retry_interval_hours": 0
+  },
+  "guardrails": {
+    "allowed_days": [
+      "MON",
+      "TUE",
+      "WED",
+      "THU",
+      "FRI",
+      "SAT",
+      "SUN"
+    ],
+    "last_call_time": "21:00",
+    "earliest_call_time": "08:00"
+  },
+  "request_id": "hunar_call_mtqsj2ve_7a4w"
+}

@@ -30,19 +30,23 @@ for path in (PROJECT_ROOT, BACKEND_DIR, APP_DIR):
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-from app.database import SessionLocal
+from app.database import SessionLocal, engine, Base
 from app.models import CallRecord
 from app.services.hunar_service import hunar_service
 from app.routers.hiring import (
     is_placeholder_transcript,
     is_placeholder_summary,
     _hydrate_call_record,
+    seed_default_calls_if_empty,
 )
 
 
 async def run_backfill():
+    # Ensure tables exist
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        seed_default_calls_if_empty(db)
         calls = db.query(CallRecord).all()
         logger.info(f"Starting historical backfill scan across {len(calls)} records...")
 
