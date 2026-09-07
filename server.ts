@@ -21,7 +21,7 @@ const HUNAR_API_KEY = process.env.HUNAR_API_KEY || 'hunar_va_live_sk_h9Wk6V6Rv6D
 const HUNAR_BASE_URL = (process.env.HUNAR_BASE_URL || 'https://api.voice.hunar.ai').replace(/\/$/, '');
 const HUNAR_SCREENING_AGENT_ID = process.env.HUNAR_SCREENING_AGENT_ID || '0f870d5a-ba01-4a4a-bc97-611727aa1837';
 const HUNAR_REACHOUT_AGENT_ID = process.env.HUNAR_REACHOUT_AGENT_ID || 'ffc1ebd5-6c44-4864-be80-cbf5e0ae8011';
-const HUNAR_FROM_PHONE_NUMBER = process.env.HUNAR_FROM_PHONE_NUMBER || '+918031139599';
+const HUNAR_FROM_PHONE_NUMBER: string | undefined = process.env.HUNAR_FROM_PHONE_NUMBER || undefined;
 const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
 
 // Resilient outbound HTTP client with connection timeout and exponential backoff
@@ -679,8 +679,7 @@ async function startServer() {
 
           const payload: any = {
             agent_id: HUNAR_SCREENING_AGENT_ID,
-            from_number: HUNAR_FROM_PHONE_NUMBER,
-            from_phone_number: HUNAR_FROM_PHONE_NUMBER,
+            ...(HUNAR_FROM_PHONE_NUMBER ? { from_number: HUNAR_FROM_PHONE_NUMBER, from_phone_number: HUNAR_FROM_PHONE_NUMBER } : {}),
             callee_name: candidate_name,
             mobile_number: phone_number,
             to_number: phone_number,
@@ -1416,8 +1415,7 @@ async function startServer() {
 
             const payload: any = {
               agent_id: HUNAR_REACHOUT_AGENT_ID,
-              from_number: HUNAR_FROM_PHONE_NUMBER,
-              from_phone_number: HUNAR_FROM_PHONE_NUMBER,
+              ...(HUNAR_FROM_PHONE_NUMBER ? { from_number: HUNAR_FROM_PHONE_NUMBER, from_phone_number: HUNAR_FROM_PHONE_NUMBER } : {}),
               callee_name: cand.name,
               mobile_number: cand.contact_phone,
               to_number: cand.contact_phone,
@@ -1620,7 +1618,7 @@ async function startServer() {
           },
           body: JSON.stringify({
             to_number: process.env.HUNAR_ATTENDANCE_PHONE,
-            from_phone_number: HUNAR_FROM_PHONE_NUMBER,
+            ...(HUNAR_FROM_PHONE_NUMBER ? { from_number: HUNAR_FROM_PHONE_NUMBER, from_phone_number: HUNAR_FROM_PHONE_NUMBER } : {}),
             agent_id: process.env.HUNAR_IVR_AGENT_ID || HUNAR_REACHOUT_AGENT_ID,
             variables: {
               event: 'ivr_attendance_verification',
